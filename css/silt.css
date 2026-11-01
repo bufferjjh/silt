@@ -1,0 +1,490 @@
+/* Silt. One typed document on a 9 x 27 character cell (8 x 24 on a phone).
+   15px Plex Mono has an advance of exactly 9px, so every column and every line is a whole number.
+   The page is exactly 129 rows tall. Blank rows ("voids") absorb whatever the content leaves. */
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../assets/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+/* Consolas scaled to the same advance, so that a late webfont moves nothing. */
+@font-face {
+  font-family: "Plex Fallback";
+  src: local("Consolas");
+  size-adjust: 109.13%;
+}
+
+:root {
+  --paper: #E8E1D3;
+  --ink: #15131A;
+  --band: #0A0910;
+  --grey: #77727F;
+  --cold: #BFE8FF;
+  --molten: #F06A20;
+  --molten-ink: #170902;
+  --molten-grey: #6B2906;
+
+  --cw: 9px;
+  --lh: 27px;
+  --fs: 15px;
+  --grain: 3px;
+  --tick: 9px;
+  --tick-gap: 12px;
+  --page-w: 100vw;
+  --left: 36px;
+  --right: 18px;
+  --fluid: 0;
+
+  /* Columns, film rows, plate rows, and the rows each void defaults to.
+     gutter.js arrives at much the same numbers; they are here so that little moves when it runs. */
+  --cols: 128; --film-rows: 24; --sim-rows: 24;
+  --v1: 6; --v2: 4; --v3: 6; --v4: 6;
+
+  --fw: calc(var(--cols) * var(--cw));
+  --film-h: calc(var(--film-rows) * var(--lh));
+  --sim-h: calc(var(--sim-rows) * var(--lh));
+}
+
+/* 16:9 lands exactly on the grid at 16n columns by 3n lines. */
+@media (min-width: 1600px) { :root { --cols: 160; --film-rows: 30; --sim-rows: 30; --v1: 4; --v2: 3; --v3: 3; --v4: 3; } }
+@media (max-width: 1279px) { :root { --cols: 112; --film-rows: 21; --sim-rows: 23; --v1: 7; --v2: 5; --v3: 7; --v4: 6; } }
+@media (max-width: 1090px) { :root { --cols: 96;  --film-rows: 18; --sim-rows: 21; --v1: 8; --v2: 6; --v3: 8; --v4: 7; } }
+@media (max-width: 946px)  { :root { --cols: 80;  --film-rows: 15; --sim-rows: 24; --v1: 7; --v2: 6; --v3: 7; --v4: 7; } }
+
+/* A short window steps down a size, so that the picture and its controls fit on one screen. */
+@media (min-width: 1600px) and (max-height: 864px) { :root { --cols: 128; --film-rows: 24; --sim-rows: 24; --v1: 6; --v2: 4; --v3: 6; --v4: 6; } }
+@media (min-width: 1280px) and (max-height: 702px) { :root { --cols: 112; --film-rows: 21; --sim-rows: 21; --v1: 7; --v2: 5; --v3: 7; --v4: 7; } }
+@media (min-width: 1091px) and (max-height: 621px) { :root { --cols: 96;  --film-rows: 18; --sim-rows: 18; --v1: 8; --v2: 6; --v3: 8; --v4: 8; } }
+@media (min-width: 947px)  and (max-height: 540px) { :root { --cols: 80;  --film-rows: 15; --sim-rows: 15; --v1: 9; --v2: 7; --v3: 9; --v4: 9; } }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The root is molten so that overscrolling past the bottom shows the same orange.
+   Paper is painted by the body, and above the top of the page by body::before. */
+html {
+  color-scheme: light;
+  background: var(--molten);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  position: relative;
+  margin: 0;
+  overflow-x: hidden;
+  color: var(--ink);
+  background: var(--paper);
+  font: 400 var(--fs)/var(--lh) "IBM Plex Mono", "Plex Fallback", ui-monospace, Menlo, monospace;
+  font-synthesis: none;
+  font-variant-ligatures: none;
+  text-transform: uppercase;
+}
+body::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 100vh;
+  background: var(--paper);
+}
+
+h1, h2, p, figure, figcaption { margin: 0; font: inherit; }
+p { text-wrap: balance; }
+
+.frame {
+  width: var(--fw);
+  margin-inline: auto;
+}
+/* A classic scrollbar often leaves an odd width to centre in, and type on a half pixel goes soft. */
+@supports (margin-left: round(down, calc((100% - 1px) / 2), 1px)) {
+  .frame {
+    margin-left: round(down, calc((100% - var(--fw)) / 2), 1px);
+    margin-right: 0;
+  }
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(129 * var(--lh));
+}
+main > * { flex: none; }
+
+/* ---- The gutter. Generated content, so it cannot be selected or copied. ---- */
+
+.gutter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(9 * var(--lh));
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.gutter .frame { position: relative; height: 100%; }
+.nums {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  margin-right: var(--tick-gap);
+  color: var(--grey);
+  font-size: var(--tick);
+  line-height: var(--lh);
+  text-align: right;
+  white-space: pre;
+  /* Sits the small numerals on the same baseline as the running text. */
+  transform: translateY(calc((var(--fs) - var(--tick)) * .375));
+}
+.nums::before { content: "0000\A 0032\A 0064\A 0096\A 0128\A 0160\A 0192\A 0224\A 0256\A 0288\A 0320\A 0352\A 0384\A 0416\A 0448\A 0480\A 0512\A 0544\A 0576\A 0608\A 0640\A 0672\A 0704\A 0736\A 0768\A 0800\A 0832\A 0864\A 0896\A 0928\A 0960\A 0992\A 1024\A 1056\A 1088\A 1120\A 1152\A 1184\A 1216\A 1248\A 1280\A 1312\A 1344\A 1376\A 1408\A 1440\A 1472\A 1504\A 1536\A 1568\A 1600\A 1632\A 1664\A 1696\A 1728\A 1760\A 1792\A 1824\A 1856\A 1888\A 1920\A 1952\A 1984\A 2016\A 2048\A 2080\A 2112\A 2144\A 2176\A 2208\A 2240\A 2272\A 2304\A 2336\A 2368\A 2400\A 2432\A 2464\A 2496\A 2528\A 2560\A 2592\A 2624\A 2656\A 2688\A 2720\A 2752\A 2784\A 2816\A 2848\A 2880\A 2912\A 2944\A 2976\A 3008\A 3040\A 3072\A 3104\A 3136\A 3168\A 3200\A 3232\A 3264\A 3296\A 3328\A 3360\A 3392\A 3424\A 3456\A 3488\A 3520\A 3552\A 3584\A 3616\A 3648\A 3680\A 3712\A 3744\A 3776\A 3808"; }
+
+/* ---- Voids ---- */
+
+.void { --min: 2; --w: 3; height: calc(var(--n, var(--min)) * var(--lh)); }
+.v0 { --w: 0; --n: var(--min); }
+.v1 { --n: var(--v1); }
+.v2 { --n: var(--v2); --w: 2; }
+.v3 { --n: var(--v3); }
+.v4 { --n: var(--v4); }
+main > .silence { flex: 1 0 auto; --min: 3; --w: 4; }
+
+/* ---- Paper ---- */
+
+.split {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: calc(2 * var(--cw));
+}
+.split > :last-child { margin-left: auto; }
+.nb { display: inline-block; }
+
+.open { padding-top: var(--lh); }
+
+h1 {
+  width: fit-content;
+  max-width: 100%;
+  margin-block: var(--lh);
+  padding-inline: var(--cw);
+  color: var(--paper);
+  background: var(--ink);
+  text-wrap: balance;
+}
+
+#hinge { margin-top: var(--lh); }
+
+/* ---- Bands ---- */
+
+.band {
+  padding-block: var(--lh) calc(2 * var(--lh));
+  color: var(--paper);
+  background: var(--band);
+}
+
+.band h2, .voice {
+  padding-left: calc((var(--fw) - var(--len) * var(--cw)) / 2);
+}
+/* Titles keep to the columns. The quote centres under the grain, to the pixel. */
+@supports (width: round(down, 1px, 1px)) {
+  .band h2 { padding-left: round(down, calc((var(--fw) - var(--len) * var(--cw)) / 2), var(--cw)); }
+  .voice { padding-left: round(down, calc((var(--fw) - var(--len) * var(--cw)) / 2), 1px); }
+}
+
+::selection { color: var(--paper); background: var(--ink); }
+.band ::selection { color: var(--band); background: var(--cold); }
+
+/* ---- Typed controls ---- */
+
+button {
+  appearance: none;
+  position: relative;
+  height: var(--lh);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  line-height: var(--lh);
+  text-transform: inherit;
+  vertical-align: top;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color: var(--band); background: var(--paper); }
+@media (hover: hover) {
+  button:hover { color: var(--band); background: var(--paper); }
+}
+/* Fingers get more to hit; the row keeps its height. */
+@media (pointer: coarse) {
+  button::after { content: ""; position: absolute; inset: -8px 0; }
+}
+
+.w7 { min-width: 7ch; text-align: left; }
+
+/* film.js shows the cue. It does nothing without that file, so it does not offer. */
+.cue { visibility: hidden; color: var(--band); background: var(--paper); }
+.cue.on { visibility: visible; }
+.cue:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; background: var(--paper); }
+@media (hover: hover) {
+  .cue:hover { color: var(--band); background: var(--cold); }
+}
+
+.ctl[hidden] { display: none; }
+.btns { display: inline-flex; column-gap: var(--cw); }
+.film-slot { height: var(--lh); }
+.film-ctl { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: calc(2 * var(--cw)); }
+
+/* ---- Exhibit A ---- */
+
+.film {
+  position: relative;
+  width: var(--fw);
+  height: var(--film-h);
+}
+.film video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 0;
+}
+.js .film video { cursor: pointer; }
+
+/* No film to play: the poster stays, and nothing offers to play it. */
+.dead figcaption > :first-child, .dead .film-ctl { visibility: hidden; }
+.dead .film video { cursor: default; }
+
+.seek { position: relative; display: block; flex: 1 1 0; min-width: calc(10 * var(--cw)); height: var(--lh); overflow: hidden; }
+.bar { display: block; white-space: pre; }
+.bar .head { color: var(--cold); }
+.probe { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; }
+.seek input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.seek:focus-within { outline: 1px solid var(--cold); outline-offset: -1px; }
+
+#film-box.full {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  padding: 0 var(--cw);
+  color: var(--paper);
+  background: #000;
+}
+#film-box.full figcaption { display: none; }
+#film-box.full .film { flex: 1 1 auto; width: 100%; height: auto; min-height: 0; }
+#film-box.full video { object-position: 50% 50%; }
+#film-box.full .ctl-slot { flex: none; }
+
+/* ---- Exhibit B ---- */
+
+.stage {
+  position: relative;
+  width: var(--fw);
+  height: var(--sim-h);
+  overflow: hidden;
+  background: var(--band);
+}
+.stage canvas, .still {
+  display: block;
+  image-rendering: pixelated;
+}
+.stage canvas[hidden], .still[hidden] { display: none; }
+/* The plate until a frame of the model has been drawn. Shown at its own size, so that a grain is
+   still a grain; a narrow plate crops it and keeps the sealed room, which sits to the right. */
+.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: none; object-position: 86% 50%; }
+@media (min-width: 1600px) { .still { object-position: 50% 50%; } }
+
+/* The longest thing this tag can say, so that changing it moves nothing. */
+.tag { min-width: 25ch; text-align: right; }
+
+/* The pointer, on the plate: five grains across, with the corners left out. It touches nothing. */
+.ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ghost[hidden] { display: none; }
+.ghost i {
+  position: absolute;
+  left: calc(var(--grain) * -2.5);
+  top: calc(var(--grain) * -2.5);
+  width: calc(var(--grain) * 5);
+  height: calc(var(--grain) * 5);
+  border: var(--grain) solid var(--paper);
+  clip-path: polygon(20% 0, 80% 0, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0 80%, 0 20%, 20% 20%);
+}
+.ghost span {
+  position: absolute;
+  left: calc(var(--grain) * 2.5);
+  top: calc(var(--grain) * 2.5);
+  padding-inline: var(--cw);
+  color: var(--paper);
+  background: var(--band);
+}
+
+/* One row on a wide plate. The record drops below the counters when the row runs out of columns. */
+.sand-slot { height: var(--lh); }
+.sand-ctl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: calc(2 * var(--cw));
+  white-space: nowrap;
+}
+.record { overflow: hidden; }
+.counters { display: flex; justify-content: space-between; column-gap: calc(3 * var(--cw)); }
+
+@media (max-width: 946px), (max-height: 540px) {
+  h1 { max-width: min(100%, calc(42 * var(--cw))); }
+  .sand-slot { height: calc(2 * var(--lh)); }
+  .sand-ctl { grid-template-columns: auto minmax(0, 1fr); }
+  .counters { grid-column: 2; grid-row: 1; justify-content: flex-end; }
+  .record { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* ---- Exhibit C ---- */
+
+.plinth {
+  position: relative;
+  height: calc(9 * var(--lh));
+}
+.grain {
+  position: absolute;
+  left: calc(var(--fw) / 2 - var(--grain) / 2);
+  top: calc(4.5 * var(--lh) - var(--grain) / 2);
+  width: var(--grain);
+  height: var(--grain);
+  background: var(--cold);
+}
+@supports (width: round(down, 1px, 1px)) {
+  .grain {
+    left: round(calc(var(--fw) / 2 - var(--grain) / 2), 1px);
+    top: round(calc(4.5 * var(--lh) - var(--grain) / 2), 1px);
+  }
+}
+.voice { text-transform: none; }
+@media (forced-colors: active) {
+  .grain { forced-color-adjust: none; background: CanvasText; }
+}
+
+/* ---- The floor ---- */
+
+.molten {
+  position: relative;
+  height: calc(9 * var(--lh));
+  padding-top: calc(4 * var(--lh));
+  color: var(--molten-ink);
+  background: var(--molten);
+}
+.molten ::selection { color: var(--molten); background: var(--molten-ink); }
+.molten .gutter { bottom: 0; }
+.molten .nums { color: var(--molten-grey); }
+.molten .nums::before { content: "3840\A 3872\A 3904\A 3936\A 3968\A 4000\A 4032\A 4064\A 4096"; }
+
+/* ---- Below the discrete sizes the frame is fluid, snapped down to whole columns. ---- */
+
+@media (max-width: 802px) {
+  :root {
+    --fluid: 1;
+    --tick-gap: 8px;
+    --fw: calc(var(--page-w) - var(--left) - var(--right));
+    --film-h: calc(var(--fw) * 9 / 16);
+  }
+  @supports (width: round(down, 1px, 1px)) {
+    :root {
+      --fw: round(down, calc(var(--page-w) - var(--left) - var(--right)), var(--cw));
+      --film-h: round(up, calc(var(--fw) * 9 / 16), var(--lh));
+    }
+  }
+  .frame { margin-left: var(--left); margin-right: 0; }
+}
+
+/* A phone: an 8 x 24 cell. 13.33px Plex Mono has an advance of exactly 8px. The plate turns portrait. */
+@media (max-width: 599px) {
+  :root {
+    --cw: 8px;
+    --lh: 24px;
+    --fs: 13.3333px;
+    --tick: 8px;
+    --tick-gap: 6px;
+    --left: 30px;
+    --right: 8px;
+    --sim-rows: 27;
+    --v1: 7; --v2: 5; --v3: 7; --v4: 7;
+  }
+  .v0 { --min: 1; }
+  .film-slot { height: calc(2 * var(--lh)); }
+  .seek { flex: 1 1 100%; }
+  #film-time { margin-left: auto; }
+  .sand-slot { height: calc(3 * var(--lh)); }
+  .film-ctl { column-gap: var(--cw); }
+  .sand-ctl { grid-template-columns: minmax(0, 1fr); }
+  .counters {
+    grid-column: 1;
+    grid-row: 2;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    column-gap: var(--cw);
+    white-space: normal;
+  }
+  .record { grid-column: 1; grid-row: 3; }
+}
+
+/* The headline takes three short rows here. Its block stays to the width of the text. */
+@media (max-width: 373px) {
+  h1 { max-width: min(100%, calc(28 * var(--cw))); }
+}
+
+/* The narrowest phones need every column. */
+@media (max-width: 339px) {
+  :root {
+    --tick-gap: 4px;
+    --left: 28px;
+    --right: 4px;
+  }
+}
+
+/* A hinge sentence that needs two rows on the very narrowest screens keeps them from the start. */
+@media (max-width: 319px) {
+  #hinge { min-height: calc(2 * var(--lh)); }
+}
+
+/* A phone on its side: the film and its controls on one screen. */
+@media (min-width: 630px) and (max-height: 460px) {
+  :root {
+    --fluid: 0;
+    --cols: 64; --film-rows: 12; --sim-rows: 18;
+    --v1: 9; --v2: 6; --v3: 9; --v4: 9;
+    --fw: calc(var(--cols) * var(--cw));
+    --film-h: calc(var(--film-rows) * var(--lh));
+  }
+  .v0 { --min: 1; }
+  .frame { margin-left: max(var(--left), calc((100% - var(--fw)) / 2)); }
+  @supports (width: round(down, 1px, 1px)) {
+    .frame { margin-left: max(var(--left), round(down, calc((100% - var(--fw)) / 2), 1px)); }
+  }
+}
+
+/* ---- Without JavaScript ---- */
+
+.no-js .cue, .no-js .ctl-slot { display: none; }

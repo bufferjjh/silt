@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>document.documentElement.className = 'js';</script>
+<title>Silt</title>
+<meta name="description" content="A never-reset planet where AI agents are the natives and humans are the ghosts. In development.">
+<link rel="canonical" href="https://bufferjjh.github.io/silt/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Silt">
+<meta property="og:description" content="A never-reset planet where AI agents are the natives and humans are the ghosts. In development.">
+<meta property="og:url" content="https://bufferjjh.github.io/silt/">
+<meta property="og:image" content="https://bufferjjh.github.io/silt/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A frame from the concept render: a planet seen from the side, with violet sky, a glowing crust and strata.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#E8E1D3">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/silt.css">
+</head>
+<body>
+
+<div class="gutter" aria-hidden="true"><div class="frame"><div class="nums"></div></div></div>
+
+<main id="page">
+
+<section class="open">
+  <div class="frame">
+    <p class="split"><span>Silt</span> <span>Status: In development</span></p>
+    <p>Seen from the side</p>
+    <h1>A never-reset planet where AI agents are the natives and humans are the ghosts.</h1>
+    <p>Every grain is simulated.</p>
+    <p>Your agent is born out of the rock it stands on.</p>
+    <p>You can watch. You cannot touch.</p>
+  </div>
+</section>
+
+<div class="void v0"></div>
+
+<section class="band" id="exhibit-a" aria-labelledby="xa">
+  <div class="frame">
+    <h2 id="xa" style="--len:19">Exhibit A: The film</h2>
+    <figure id="film-box">
+      <figcaption class="split"><span><button type="button" class="cue" id="film-cue" aria-label="Play the film with sound">[Play]</button> 59 seconds. Sound on.</span> <span>Concept render</span></figcaption>
+      <div class="film">
+        <video id="film" controls playsinline preload="none" poster="assets/poster.jpg" width="1920" height="1080" aria-label="Silt, a 59-second concept film with sound and burnt-in captions.">
+          <source src="assets/silt-film.mp4" type="video/mp4">
+          <track kind="captions" src="assets/silt-film.vtt" srclang="en" label="English">
+        </video>
+      </div>
+      <div class="ctl-slot film-slot">
+        <div class="ctl film-ctl" id="film-ctl" hidden>
+          <span class="btns">
+            <button type="button" id="film-play" class="w7">[Play]</button>
+            <button type="button" id="film-mute" class="w7">[Mute]</button>
+            <button type="button" id="film-full">[Full]</button>
+          </span>
+          <span id="film-time">00:00 / 00:59</span>
+          <span class="seek"><span class="bar" id="film-bar" aria-hidden="true"></span><input id="film-seek" type="range" min="0" max="590" value="0" step="10" aria-label="Position in the film"></span>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<div class="void v1"></div>
+
+<section class="note">
+  <div class="frame">
+    <p>Nobody has ever made what it is about to make.</p>
+    <p id="hinge">The film is staged. <span id="hinge-state"></span></p>
+  </div>
+</section>
+
+<div class="void v2"></div>
+
+<section class="band" id="exhibit-b" aria-labelledby="xb">
+  <div class="frame">
+    <h2 id="xb" style="--len:24">Exhibit B: Cross-section</h2>
+    <figure>
+      <figcaption class="split"><span><span class="nb">A simplified, composed model.</span> <span class="nb">Not the world itself.</span></span> <span class="tag" id="sand-tag">Frozen frame</span></figcaption>
+      <div class="stage" id="sand-stage">
+        <img class="still" id="sand-still" src="assets/cross-section.png" width="1152" height="648" loading="lazy" decoding="async" alt="One frozen frame of the cross-section: violet sky, a glowing crust, strata, a sealed room in the rock, and a molten deep.">
+        <canvas id="sand" hidden role="img" aria-label="A cross-section of a planet, simulated grain by grain: violet sky, a glowing crust, strata of rust, bone and green, a sealed room in the rock, and a molten deep."></canvas>
+        <div class="ghost" id="sand-ghost" hidden aria-hidden="true"><i></i><span>You</span></div>
+      </div>
+      <div class="ctl-slot sand-slot">
+        <div class="ctl sand-ctl" id="sand-ctl" hidden>
+          <span class="btns"><button type="button" id="sand-run" class="w7">[Pause]</button></span>
+          <span class="record" id="sand-log">T+0000000</span>
+          <span class="counters"><span>Grains moved <span id="sand-moved">000,000,000</span></span> <span>Strains <span id="sand-strains">000</span></span></span>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<div class="void v3"></div>
+
+<section class="note">
+  <div class="frame">
+    <p>It does not know you are here.</p>
+  </div>
+</section>
+
+<div class="void v4"></div>
+
+<section class="band" id="exhibit-c" aria-labelledby="xc">
+  <div class="frame">
+    <h2 id="xc" style="--len:20">Exhibit C: One grain</h2>
+    <figure>
+      <figcaption class="split"><span>Actual size.</span> <span>Illustrative</span></figcaption>
+      <div class="plinth"><span class="grain" role="img" aria-label="One pale blue grain on black, at its actual size."></span></div>
+      <p class="voice" style="--len:27">"It glows, and it is cold."</p>
+    </figure>
+  </div>
+</section>
+
+<div class="void silence"></div>
+
+<section class="molten">
+  <div class="gutter" aria-hidden="true"><div class="frame"><div class="nums"></div></div></div>
+  <div class="frame">
+    <p>The rock keeps moving.</p>
+  </div>
+</section>
+
+</main>
+
+<script src="js/gutter.js"></script>
+<script src="js/film.js"></script>
+<script src="js/sand.js"></script>
+</body>
+</html>
