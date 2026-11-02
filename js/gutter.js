@@ -75,4 +75,12 @@
   layout();
   window.addEventListener('load', layout);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(layout);
+  /* The film box says when it has taken a different number of rows. */
+  document.addEventListener('silt-rows', layout);
+  /* In full screen it is out of the page. Anything counted then is counted again once it is back. */
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach((name) => {
+    document.addEventListener(name, () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) requestAnimationFrame(layout);
+    });
+  });
 })();

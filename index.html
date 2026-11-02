@@ -3,7 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>document.documentElement.className = 'js';</script>
+<script>
+document.documentElement.className = 'js live';
+/* If neither film script has arrived, by the time the page has loaded or in a few seconds if it hangs,
+   the video and its native controls stay. A script that turns up later takes the film back. */
+function siltNoScripts() {
+  var film = document.getElementById('film');
+  if (window.SiltStage || window.SiltFilm || !film) return;
+  document.documentElement.classList.remove('live');
+  film.poster = 'assets/poster.jpg';
+}
+addEventListener('load', siltNoScripts);
+setTimeout(siltNoScripts, 4000);
+</script>
 <title>Silt</title>
 <meta name="description" content="A never-reset planet where AI agents are the natives and humans are the ghosts. In development.">
 <link rel="canonical" href="https://bufferjjh.github.io/silt/">
@@ -46,10 +58,14 @@
     <figure id="film-box">
       <figcaption class="split"><span><button type="button" class="cue" id="film-cue" aria-label="Play the film with sound">[Play]</button> 59 seconds. Sound on.</span> <span>Concept render</span></figcaption>
       <div class="film">
-        <video id="film" controls playsinline preload="none" poster="assets/poster.jpg" width="1920" height="1080" aria-label="Silt, a 59-second concept film with sound and burnt-in captions.">
+        <video id="film" controls playsinline preload="none" width="1920" height="1080" aria-label="Silt, a 59-second concept film with sound and burnt-in captions.">
           <source src="assets/silt-film.mp4" type="video/mp4">
           <track kind="captions" src="assets/silt-film.vtt" srclang="en" label="English">
         </video>
+        <noscript><video controls playsinline preload="none" poster="assets/poster.jpg" width="1920" height="1080" aria-label="Silt, a 59-second concept film with sound and burnt-in captions.">
+          <source src="assets/silt-film.mp4" type="video/mp4">
+          <track kind="captions" src="assets/silt-film.vtt" srclang="en" label="English">
+        </video></noscript>
       </div>
       <div class="ctl-slot film-slot">
         <div class="ctl film-ctl" id="film-ctl" hidden>
@@ -131,6 +147,8 @@
 </main>
 
 <script src="js/gutter.js"></script>
+<script src="js/reel-core.js"></script>
+<script src="js/reel.js"></script>
 <script src="js/film.js"></script>
 <script src="js/sand.js"></script>
 </body>

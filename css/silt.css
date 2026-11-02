@@ -41,6 +41,8 @@
      gutter.js arrives at much the same numbers; they are here so that little moves when it runs. */
   --cols: 128; --film-rows: 24; --sim-rows: 24;
   --v1: 6; --v2: 4; --v3: 6; --v4: 6;
+  /* The film box's rows when it is drawn live. reel.js works out the exact number; these are close, so that little moves. */
+  --reel-rows: 25;
 
   --fw: calc(var(--cols) * var(--cw));
   --film-h: calc(var(--film-rows) * var(--lh));
@@ -48,16 +50,16 @@
 }
 
 /* 16:9 lands exactly on the grid at 16n columns by 3n lines. */
-@media (min-width: 1600px) { :root { --cols: 160; --film-rows: 30; --sim-rows: 30; --v1: 4; --v2: 3; --v3: 3; --v4: 3; } }
-@media (max-width: 1279px) { :root { --cols: 112; --film-rows: 21; --sim-rows: 23; --v1: 7; --v2: 5; --v3: 7; --v4: 6; } }
-@media (max-width: 1090px) { :root { --cols: 96;  --film-rows: 18; --sim-rows: 21; --v1: 8; --v2: 6; --v3: 8; --v4: 7; } }
-@media (max-width: 946px)  { :root { --cols: 80;  --film-rows: 15; --sim-rows: 24; --v1: 7; --v2: 6; --v3: 7; --v4: 7; } }
+@media (min-width: 1600px) { :root { --cols: 160; --film-rows: 30; --reel-rows: 31; --sim-rows: 30; --v1: 4; --v2: 3; --v3: 3; --v4: 3; } }
+@media (max-width: 1279px) { :root { --cols: 112; --film-rows: 21; --reel-rows: 23; --sim-rows: 23; --v1: 7; --v2: 5; --v3: 7; --v4: 6; } }
+@media (max-width: 1090px) { :root { --cols: 96;  --film-rows: 18; --reel-rows: 21; --sim-rows: 21; --v1: 8; --v2: 6; --v3: 8; --v4: 7; } }
+@media (max-width: 946px)  { :root { --cols: 80;  --film-rows: 15; --reel-rows: 20; --sim-rows: 24; --v1: 7; --v2: 6; --v3: 7; --v4: 7; } }
 
 /* A short window steps down a size, so that the picture and its controls fit on one screen. */
-@media (min-width: 1600px) and (max-height: 864px) { :root { --cols: 128; --film-rows: 24; --sim-rows: 24; --v1: 6; --v2: 4; --v3: 6; --v4: 6; } }
-@media (min-width: 1280px) and (max-height: 702px) { :root { --cols: 112; --film-rows: 21; --sim-rows: 21; --v1: 7; --v2: 5; --v3: 7; --v4: 7; } }
-@media (min-width: 1091px) and (max-height: 621px) { :root { --cols: 96;  --film-rows: 18; --sim-rows: 18; --v1: 8; --v2: 6; --v3: 8; --v4: 8; } }
-@media (min-width: 947px)  and (max-height: 540px) { :root { --cols: 80;  --film-rows: 15; --sim-rows: 15; --v1: 9; --v2: 7; --v3: 9; --v4: 9; } }
+@media (min-width: 1600px) and (max-height: 864px) { :root { --cols: 128; --film-rows: 24; --reel-rows: 25; --sim-rows: 24; --v1: 6; --v2: 4; --v3: 6; --v4: 6; } }
+@media (min-width: 1280px) and (max-height: 702px) { :root { --cols: 112; --film-rows: 21; --reel-rows: 23; --sim-rows: 21; --v1: 7; --v2: 5; --v3: 7; --v4: 7; } }
+@media (min-width: 1091px) and (max-height: 621px) { :root { --cols: 96;  --film-rows: 18; --reel-rows: 21; --sim-rows: 18; --v1: 8; --v2: 6; --v3: 8; --v4: 8; } }
+@media (min-width: 947px)  and (max-height: 540px) { :root { --cols: 80;  --film-rows: 15; --reel-rows: 20; --sim-rows: 15; --v1: 9; --v2: 7; --v3: 9; --v4: 9; } }
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -229,7 +231,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 
 .w7 { min-width: 7ch; text-align: left; }
 
-/* film.js shows the cue. It does nothing without that file, so it does not offer. */
+/* Whichever script has the film shows the cue. It does nothing without one, so it does not offer. */
 .cue { visibility: hidden; color: var(--band); background: var(--paper); }
 .cue.on { visibility: visible; }
 .cue:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; background: var(--paper); }
@@ -290,6 +292,120 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 #film-box.full .film { flex: 1 1 auto; width: 100%; height: auto; min-height: 0; }
 #film-box.full video { object-position: 50% 50%; }
 #film-box.full .ctl-slot { flex: none; }
+
+/* ---- Exhibit A, drawn live. A terminal in the page's own cell, on the page's own rows. ---- */
+
+.live .film { height: calc(var(--reel-rows) * var(--lh)); background: #0A0A0E; }
+.live .film video { visibility: hidden; }
+.film video[hidden] { display: none; }
+.live .film-slot { height: var(--lh); }
+.live .seek { display: none; }
+.live .film-ctl { flex-wrap: nowrap; }
+.live #film-time { margin-left: auto; white-space: pre; }
+#film-mute[aria-disabled="true"] { color: inherit; background: none; cursor: default; }
+/* The soundtrack isn't there, so the line about it isn't either. The cue beside it stays. */
+.silent figcaption > :first-child { visibility: hidden; }
+/* The type has outgrown its cell: the time goes under the buttons rather than off the screen. */
+.live .film-ctl.wrap { flex-wrap: wrap; }
+.live .film-ctl.wrap button, .live .film-ctl.wrap #film-time { height: auto; line-height: 1.8; }
+
+.reel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #D6D6DC;
+  background: #0A0A0E;
+  line-height: var(--lh);
+  white-space: pre;
+  text-transform: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.reel.zoomed { line-height: 1.8; }
+.reel.zoomed .reel-label { line-height: var(--label-lh); }
+.reel > div { flex: none; position: relative; height: calc(var(--r, 1) * var(--lh)); padding-inline: var(--cw); }
+.reel .ln { display: block; height: var(--lh); }
+
+.reel-bar { display: flex; justify-content: space-between; background: #1C1C24; }
+.reel-bar .r { margin-left: auto; white-space: pre; }
+
+.still-on .reel-tick { display: none; }
+.reel-tick .row { display: flex; justify-content: space-between; }
+.reel-tick .more { display: block; }
+.on-tick .reel-tick, .on-pane .reel-pane, .on-pane .reel-keys { background: #111118; }
+.on-pane.spill .reel-pane, .on-tick.spill .reel-tick { background: none; }
+.on-pane.spill .reel-pane::before { display: none; }
+.on-pane .reel-pane::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: #2C2C3A;
+}
+
+/* The picture takes whatever rows the text leaves. The canvas is one pixel per grain, and is never resampled. */
+.reel > .reel-pic { flex: 1 1 0; height: auto; min-height: 0; padding: 0; overflow: hidden; }
+.reel-pic canvas {
+  position: absolute;
+  display: block;
+  image-rendering: pixelated;
+}
+.reel.ghosting .reel-pic { cursor: none; }
+
+.reel.banner-up > .reel-pic { overflow: visible; }
+
+/* Where nothing is being said, the world runs on under the empty rows. Nothing moves to make room. */
+.reel.under > .reel-pic { overflow: visible; }
+.reel.under .reel-pane, .reel.under .reel-keys { background: none; }
+.reel.under .reel-keys span { visibility: hidden; }
+.reel.under .reel-pane::before { display: none; }
+
+.reel-labels { position: absolute; inset: 0; pointer-events: none; }
+.reel-label {
+  position: absolute;
+  height: var(--label-h);
+  padding-inline: var(--label-pad);
+  line-height: var(--label-h);
+  overflow: hidden;
+  background: #0A0A0E;
+}
+.reel-label[hidden] { display: none; }
+
+.reel-keys { color: #7C7C8A; }
+.reel-keys span { display: none; padding-inline: 2px; margin-left: -2px; margin-right: calc(3 * var(--cw)); }
+.on-pane .reel-keys span { display: inline; }
+.on-pane .reel-keys.only span { display: none; margin-right: 0; }
+.on-pane .reel-keys span.on { display: inline; color: #FAFAFC; background: #464664; }
+
+.reel.spill-keys .reel-keys span { visibility: hidden; }
+.reel.spill-keys .reel-keys { background: none; }
+
+.reel.keys-up > .reel-keys { position: absolute; right: 0; background: none; height: var(--lh); }
+.reel.keys-up .reel-tick .r { margin-right: calc(12 * var(--cw)); }
+
+.reel > .reel-cap { padding: 0; color: #F0F0F0; background: #040407; text-align: center; }
+.reel-cap .lines { display: block; white-space: pre-line; }
+.reel-cap.air .lines { padding-top: var(--lh); }
+/* For screen readers. */
+.reel-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.reel-end { position: absolute; left: 0; right: 0; top: calc(-2 * var(--lh)); }
+
+/* Rows for the scenes that are only text. They sit over the picture and whatever rows are free around it. */
+.reel > .reel-sheet { position: absolute; left: 0; right: 0; height: auto; padding: 0; pointer-events: none; }
+
+.reel-lock, .reel-lock body { overflow: hidden; }
+.live #film-box.full { padding: 0; background: #0A0A0E; height: 100vh; height: 100dvh; }
+.live #film-box.full .film { height: auto; }
+.live #film-box.full .ctl-slot { padding-inline: var(--cw); }
+.live #film-box.overlay { position: fixed; inset: 0; z-index: 3; }
+
+@media (forced-colors: active) {
+  .on-pane .reel-keys span.on { outline: 1px solid; }
+}
 
 /* ---- Exhibit B ---- */
 
@@ -409,6 +525,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
     --tick-gap: 8px;
     --fw: calc(var(--page-w) - var(--left) - var(--right));
     --film-h: calc(var(--fw) * 9 / 16);
+    --reel-rows: 18;
   }
   @supports (width: round(down, 1px, 1px)) {
     :root {
@@ -430,6 +547,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
     --left: 30px;
     --right: 8px;
     --sim-rows: 27;
+    --reel-rows: 20;
     --v1: 7; --v2: 5; --v3: 7; --v4: 7;
   }
   .v0 { --min: 1; }
@@ -485,6 +603,27 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   }
 }
 
+/* Drawn live, the terminal needs width more than height on a phone on its side: the phone's cell, and every column. */
+@media (min-width: 600px) and (max-height: 460px) {
+  .live {
+    --fluid: 1;
+    --cw: 8px;
+    --lh: 24px;
+    --fs: 13.3333px;
+    --tick: 8px;
+    --tick-gap: 6px;
+    --left: 30px;
+    --right: 8px;
+    --reel-rows: 15;
+    --fw: min(calc(128 * var(--cw)), calc(var(--page-w) - var(--left) - var(--right)));
+  }
+  @supports (width: round(down, 1px, 1px)) {
+    .live {
+      --fw: min(calc(128 * var(--cw)), round(down, calc(var(--page-w) - var(--left) - var(--right)), var(--cw)));
+    }
+  }
+}
+
 /* ---- Without JavaScript ---- */
 
-.no-js .cue, .no-js .ctl-slot { display: none; }
+.no-js .cue, .no-js .ctl-slot, .no-js #film { display: none; }
