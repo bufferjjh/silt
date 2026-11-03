@@ -19,18 +19,19 @@
 
   const T = Core.T, VW = Core.VW, VH = Core.VH, COLORS = Core.COLORS, KEYS = Core.KEYS;
   const SOUND = 'assets/silt-film.m4a';
-  const STILL_SRC = 'assets/film-still.png', STILL_T = 24.6;
-  /* The still is this wide, and has this many rows of sky above the world's top. Its last rows are plain rock. */
-  const STILL_W = 320, STILL_SKY = 30, STILL_DEEP = 12;
-  const SOUL_X = 59, SOUL_Y = 36; /* Where the soul's label is in the still. */
-  const KESH = 'Kesh, asleep';
-  const NAME = 'Silt, a 59-second concept film with sound, drawn grain by grain: a planet seen from the side.';
+  /* The still is the widest view near its end, one pixel per cell: this many cells across, with this many rows of sky
+     above the world's top. Its last rows are plain rock. */
+  const STILL_SRC = 'assets/film-still.png', STILL_T = 52.6;
+  const STILL_W = 200, STILL_SKY = 12, STILL_DEEP = 8;
+  const NAME = 'Silt, a 60-second concept film with sound, drawn grain by grain: a small creature tends one patch of ' +
+    'ground, and the camera steps back across the valley that grows from it.';
   const NAME_SILENT = NAME.replace(' with sound', '');
-  const HOLD = 58.4; /* The end card, before the film fades. It stays up after this. */
+  const HOLD = 59.4; /* The end card, before the film fades. It stays up after this. */
+  const END_CARD = 59.0; /* Where the video picks up an ended film. */
   const WAIT_FOR_SOUND = 2000;
   const WAIT_FOR_WORLD = 10000; /* After a press. Longer than this, the device won't keep up anyway. */
   const SOUND_LATE = 3000; /* Running this long with no sound yet, the button says so. */
-  const NARROWEST = 96; /* Columns. Fewer would lose Kesh's white grain. */
+  const NARROWEST = 96; /* Columns. Fewer would crowd the patch. */
   const TALLEST = 112; /* Rows. More than this is mostly dark rock. */
   const SMALLEST_GRAIN = 1.25; /* CSS pixels. Under this, the world is too small to read. */
   const STEP = 1 / 60;
@@ -43,13 +44,16 @@
   let words = null, script = null;
 
   function scan() {
-    const s = { tag: '', left: '', rights: [], ones: [], twos: [], pairs: [], caps: [], rows: {}, end: null };
+    const s = { tag: '', left: '', rights: [], ones: [], twos: [], pairs: [], caps: [], end: null };
     const add = (list, text) => { if (text && list.indexOf(text) < 0) list.push(text); };
     words.reduced = true;
     for (let f = 0; f < T.END * 10; f++) {
       const v = words.frame(f / 10);
       s.tag = v.title.right;
-      if (v.ticker) { s.left = v.ticker.left; add(s.rights, v.ticker.right); }
+      if (v.ticker) {
+        if (v.ticker.left.length > s.left.length) s.left = v.ticker.left;
+        add(s.rights, v.ticker.right);
+      }
       if (v.pane) {
         add(s.ones, v.pane.one);
         add(s.twos, v.pane.two);
@@ -57,15 +61,8 @@
       }
       if (v.caption) add(s.caps, v.caption.text);
       if (v.end) s.end = v.end;
-      for (let i = 0; i < v.rows.length; i++) {
-        const r = v.rows[i];
-        (s.rows[v.scene] = s.rows[v.scene] || {})[r.row] = r.text;
-      }
     }
     words.reduced = false;
-    /* What the closing scene says, for the caption's live region: all but the line about the connection. */
-    const closing = s.rows.exit || {};
-    s.closing = Object.keys(closing).map(Number).sort((a, b) => a - b).slice(1).map((r) => closing[r]).join(' ');
     return s;
   }
 
@@ -129,8 +126,6 @@
   function setRows(e, n) {
     if (e.$rows !== n) { e.$rows = n; e.style.setProperty('--r', n); }
   }
-  /* Grey on the strips, a touch lighter than the film's so that it stays readable there. */
-  function ink(color) { return color === '#787886' ? '#7c7c8a' : color; }
 
   const ctl = document.getElementById('film-ctl');
   const cue = document.getElementById('film-cue');
@@ -140,7 +135,7 @@
   const time = document.getElementById('film-time');
 
   let reelEl, bar, barLeft, barRight, tick, tickLeft, tickRight, tickMore, pic, still, labelsEl;
-  let pane, keys, keyEls, cap, capLines, endOne, say, sheet, probe;
+  let pane, keys, keyEls, cap, capLines, endOne, probe;
 
   function build() {
     reelEl = make('div', 'reel still-on');
@@ -170,8 +165,6 @@
     cap.setAttribute('aria-live', 'off');
     endOne = make('span', 'reel-end', cap);
     capLines = make('span', 'lines', cap);
-    say = make('span', 'reel-say', cap);
-    sheet = make('div', 'reel-sheet', reelEl);
     probe = make('span', 'probe', reelEl);
     probe.setAttribute('aria-hidden', 'true');
     probe.textContent = '0000000000';
@@ -187,67 +180,13 @@
   /* Everything that follows from the box's size. */
   let geo = { key: '', g: 1, K: 1, cols: 0, rows: 0, dpr: 1, cw: 9, lh: 27, inner: 0 };
   let image = null;
-  let paneLines = [], capEls = [], sheetEls = [], sheetPlans = {}, moreEls = [];
+  let paneLines = [], capEls = [], moreEls = [];
   const heights = {};
 
   function cssNumber(name) { return parseFloat(getComputedStyle(root).getPropertyValue(name)) || 0; }
 
   function fullElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
   function isFull() { return box.classList.contains('full'); }
-
-  /* A row's text can start with a word that the rest of it should hang under, where that leaves room. */
-  function hangOf(text, width) {
-    const m = /^(Day\s+\d+\s+|you > |agent > )/.exec(text);
-    const longest = text.split(' ').reduce((n, w) => Math.max(n, w.length), 0);
-    if (m && width - m[0].length >= 30 && width - m[0].length >= longest) return m[0].length;
-    return 2;
-  }
-
-  /* Where the rows of a text-only scene go. The film's own rows if they fit, then closer together. The limits
-     are tried in turn: the picture's rows, then the pane's strip, then the keys row. If it is still too long,
-     every column and the least hanging indent. */
-  function planSheet(scene, limits, cols, first) {
-    const table = script.rows[scene];
-    if (!table) return null;
-    const setOut = (col, width, hang) => Object.keys(table).map(Number).sort((a, b) => a - b).map((row) => {
-      const text = table[row];
-      return { row, text, col, lines: wrap(text, width, hang || hangOf(text, width)) };
-    });
-    const col = cols < 66 ? 1 : (scene === 'history' ? 4 : 2);
-    let items = setOut(col, cols - col - 1);
-    function lay(maxGap, top) {
-      let at = Math.min(items[0].row, top), last = items[0].row, end = at;
-      items.forEach((it, i) => {
-        if (i) at = end + Math.max(0, Math.min(it.row - last - 1, maxGap));
-        it.at = at;
-        end = at + it.lines.length;
-        last = it.row + it.lines.length - 1;
-      });
-      return end;
-    }
-    let end = 0;
-    const tries = [[2, 99], [1, 2], [0, first]];
-    search:
-    for (const limit of limits) {
-      for (let i = 0; i < tries.length; i++) {
-        end = lay(tries[i][0], tries[i][1]);
-        if (end <= limit) break search;
-      }
-    }
-    if (end > limits[limits.length - 1]) {
-      items = setOut(1, cols - 1, 1);
-      end = lay(0, first);
-    }
-    const byRow = {};
-    items.forEach((it) => { byRow[it.row] = it; });
-    return { byRow, end };
-  }
-
-  /* The rows of picture the text-only scenes can't do without, at their closest. */
-  function rowsForSheets(cols, around) {
-    const tightest = (scene, first) => { const p = planSheet(scene, [0], cols, first); return p ? p.end - around : 0; };
-    return Math.max(tightest('history', 1), tightest('prompt', 0));
-  }
 
   /* How many rows the text needs at this width, the most it will ever need. */
   function textRows(cols, inner) {
@@ -324,14 +263,11 @@
       const fits = Math.floor(windowH / lh) - 1;
       picRows = Math.max(tier, rowsOf(K, need));
       if (chrome + picRows > fits && canLift) { keysUp = true; keyRows = 0; chrome--; }
-      /* Text-only scenes need their rows, wherever they find them. */
-      const forSheets = rowsForSheets(cols, tickRows + paneRows + keyRows);
-      picRows = Math.max(picRows, forSheets);
       if (chrome + picRows > fits) {
         /* A short window: the rows that are left, or that the text-only scenes hold on to, and grains to suit.
            Very short, the picture keeps to the action rather than go on shrinking. If that would still be too
            small to read, the grains stay as they were: smaller would buy nothing. */
-        const rows = Math.max(fits - chrome, forSheets);
+        const rows = Math.max(1, fits - chrome);
         need = Math.floor(rows * lh / 64) >= 2 ? 64 : 48;
         const k = Math.min(K, Math.floor(rows * lh * dpr / need));
         if (k / dpr >= SMALLEST_GRAIN) {
@@ -349,7 +285,7 @@
     const g = K / dpr;
     const gridCols = Math.ceil((wDev + 1) / K);
     const gridRows = Math.ceil(((picH + (stillOn ? tickRows * lh : 0)) * dpr + 1) / K);
-    /* The pane's strip and the keys are empty in the fall and at the edge. Where the picture is short of rows, the world uses them. */
+    /* The pane's strip and the keys are empty at the end. Where the picture is short of rows, the word uses them. */
     const spare = (!allKeys || need < VH) && !stillOn ? Math.ceil((paneRows + keyRows) * lh * dpr / K) : 0;
 
     /* A label is a whole number of grains tall and wide, so it sits in the picture like a cut in the rock. */
@@ -388,16 +324,6 @@
     while (moreEls.length < tickRows - 1) moreEls.push(make('span', 'ln', tickMore));
     while (moreEls.length > tickRows - 1) tickMore.removeChild(moreEls.pop());
 
-    const sheetRows = tickRows + Math.ceil(picH / lh) + paneRows + keyRows;
-    while (sheetEls.length < sheetRows) sheetEls.push(make('span', 'ln', sheet));
-    while (sheetEls.length > sheetRows) sheet.removeChild(sheetEls.pop());
-    sheet.style.top = barRows * lh + 'px';
-    geo.sheetRows = sheetRows;
-    sheetPlans = {
-      prompt: planSheet('prompt', [sheetRows], cols, 0),
-      history: planSheet('history', [tickRows + Math.ceil(picH / lh), sheetRows - keyRows, sheetRows], cols, 1),
-      exit: planSheet('exit', [sheetRows], cols, 0)
-    };
 
     /* The canvas: one pixel per grain, shown at a whole number of device pixels, from a device pixel. */
     const canvasRows = gridRows + spare;
@@ -514,27 +440,17 @@
     }
     if (up !== raised) { raised = up; reelEl.classList.toggle('banner-up', up); }
 
-    /* Kesh and the ledge stay clear. On a small picture another label would land on them. */
-    for (let i = 0; i < v.labels.length; i++) {
-      if (v.labels[i].text === KESH) taken.push((v.labels[i].x - 1) * g, (v.labels[i].y + 3) * g, 19 * g, 6 * g);
-    }
-
     /* A label sits on the film's text row. The bottom of the backing is where the bottom of that row was, so that
-       it stays above what it names. One low in the picture hangs from the row instead, below what it names. */
-    let you = null;
-    /* Kesh's label first, and then the others the story names. The rest go where they fit, or not at all. */
-    for (let pass = 0; pass < 3; pass++) {
+       it stays above what it names. One low in the picture hangs from the row instead, below what it names.
+       The labels the story names go first. The rest go where they fit, or not at all. */
+    for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < v.labels.length; i++) {
         const l = v.labels[i];
-        if (l.text === 'you') { you = l; continue; }
-        const kesh = l.text === KESH;
-        if (pass === 0 ? !kesh : kesh || !l.story !== (pass === 2) || dropped[l.text]) continue;
+        if (!l.story !== (pass === 1) || dropped[l.text]) continue;
         const w = Math.min(W, grainsUp(l.text.length * cw + 2 * pad));
         let x = Math.max(0, Math.min(l.x * g - pad, W - w));
         /* A line that types stays centred on where it will finish. */
         if (l.center) x = Math.round((W - l.center * cw) / 2 / g) * g - pad;
-        /* Kesh's label stops at the room's wall, rather than running over it. */
-        if (kesh) x = Math.max(0, Math.min(x, (Core.BURROW.x + 133 - v.cam.x) * g - w));
         const low = l.y > H / g * 0.82;
         const y = Math.max(0, Math.min(low ? l.y * g : (l.y + 2) * g - h, H - h));
         if (hits(x, y, w, h) && !l.story) { dropped[l.text] = true; continue; }
@@ -544,33 +460,13 @@
       }
     }
 
-    /* The ghost's label touches nothing either. It sits just clear of the ring, on whichever side is free, or
-       the nearest place that is. If there is none, only the ring is there until the pointer moves on. */
-    if (you) {
-      const w = grainsUp(you.text.length * cw + 2 * pad);
-      const gx = v.cam.ghostX, gy = v.cam.ghostY;
-      const y = Math.max(0, Math.min((you.y + 2) * g - h, H - h));
-      const mid = Math.max(0, Math.min((gx + 0.5) * g - w / 2, W - w));
-      const right = (gx + 3) * g, left = (gx - 2) * g - w, above = (gy - 2) * g - h, below = (gy + 3) * g;
-      const free = (a, b) => a >= 0 && a + w <= W && b >= 0 && b + h <= H && !hits(a, b, w, h);
-      if (free(right, y)) putLabel(you.text, right, y, w, h, you.color, you.back);
-      else if (free(left, y)) putLabel(you.text, left, y, w, h, you.color, you.back);
-      else if (free(mid, above)) putLabel(you.text, mid, above, w, h, you.color, you.back);
-      else if (free(mid, below)) putLabel(you.text, mid, below, w, h, you.color, you.back);
-      else if (freeSpot(Math.max(0, Math.min(right, W - w)), y, w, h, W, H)) putLabel(you.text, spotX, spotY, w, h, you.color, you.back);
-    }
-
     for (let i = labelsUsed; i < labelPool.length; i++) if (!labelPool[i].hidden) labelPool[i].hidden = true;
   }
 
   /* ---- Everything else that is text ---- */
 
-  let scene = '', hasTick = null, hasPane = null, spill = null, spillKeys = false, activeKey = undefined;
+  let scene = '', hasTick = null, hasPane = null, activeKey = undefined;
   let lastOne = null, lastTwo = null, oneFull = '', twoFull = '', lastCap = null, lastOp = -1, lastRight = null, lastLeft = null;
-
-  function clearSheet() {
-    for (let i = 0; i < sheetEls.length; i++) { if (sheetEls[i].$text) setText(sheetEls[i], ''); }
-  }
 
   function drawPane(p) {
     const on = !!p;
@@ -582,10 +478,10 @@
       twoFull = goal(script.twos, two, twoFull);
       const a = wrap(oneFull, geo.inner, 2), b = wrap(twoFull, geo.inner, 2);
       for (let i = 0; i < paneLines.length; i++) {
-        if (i < a.length) { setText(paneLines[i], shown(oneFull, a[i], one.length)); setColor(paneLines[i], ink(p.oneColor)); }
+        if (i < a.length) { setText(paneLines[i], shown(oneFull, a[i], one.length)); setColor(paneLines[i], p.oneColor); }
         else if (i - a.length < b.length) {
           setText(paneLines[i], shown(twoFull, b[i - a.length], two.length));
-          setColor(paneLines[i], ink(p.twoColor));
+          setColor(paneLines[i], p.twoColor);
         } else setText(paneLines[i], '');
       }
     }
@@ -620,8 +516,8 @@
     }
     if (t) {
       setColor(tickLeft, t.leftColor);
-      setColor(tickRight, ink(t.rightColor));
-      setColor(tickMore, ink(t.rightColor));
+      setColor(tickRight, t.rightColor);
+      setColor(tickMore, t.rightColor);
     }
   }
 
@@ -632,44 +528,17 @@
       lastCap = text;
       const lines = text ? even(text, geo.chars) : [];
       for (let i = 0; i < capEls.length; i++) setText(capEls[i], i < lines.length ? text.slice(lines[i].at, lines[i].end) + ' ' : '');
-      setColor(capLines, e ? e.twoColor : '#f0f0f0');
+      setColor(capLines, e ? e.twoColor : COLORS.cap);
     }
     setText(endOne, e ? e.one : '');
-    /* The closing lines are typed into rows that aren't live, or every letter would be read out. Once, here. */
-    setText(say, v.scene === 'exit' ? script.closing : '');
     if (e) setColor(endOne, e.oneColor);
     const op = !c || motion.matches ? 1 : Math.round(c.fade * 8) / 8;
     if (op !== lastOp) { lastOp = op; capLines.style.opacity = op === 1 ? '' : op; }
   }
 
-  function drawSheet(v) {
-    const plan = sheetPlans[v.scene];
-    let spills = false, overKeys = false;
-    if (plan) {
-      for (let i = 0; i < v.rows.length; i++) {
-        const r = v.rows[i], it = plan.byRow[r.row];
-        if (!it) continue;
-        const pre = ' '.repeat(it.col);
-        for (let k = 0; k < it.lines.length; k++) {
-          const e = sheetEls[it.at + k];
-          if (!e) continue;
-          const s = shown(it.text, it.lines[k], r.text.length);
-          /* The space after a finished line is for copying. It doesn't get a column of its own past the edge. */
-          setText(e, s ? (pre + s).slice(0, geo.chars) : '');
-          setColor(e, r.color);
-        }
-      }
-      spills = plan.end > geo.tickRows + Math.ceil(geo.picH / geo.lh);
-      overKeys = plan.end > geo.sheetRows - geo.keyRows;
-    }
-    if (spills !== spill) { spill = spills; reelEl.classList.toggle('spill', spills); }
-    if (overKeys !== spillKeys) { spillKeys = overKeys; reelEl.classList.toggle('spill-keys', overKeys); }
-  }
-
   function render(v) {
     if (v.scene !== scene) {
       scene = v.scene;
-      clearSheet();
       Object.keys(dropped).forEach((k) => { delete dropped[k]; });
     }
     setText(barLeft, geo.barBoth ? v.title.left : '');
@@ -677,7 +546,6 @@
     setColor(barRight, v.title.rightColor);
     drawTicker(v.ticker);
     drawPane(v.pane);
-    drawSheet(v);
     drawCaption(v);
     drawLabels(v);
   }
@@ -687,7 +555,6 @@
     lastOne = lastTwo = lastCap = lastRight = lastLeft = null;
     folded = {};
     lastOp = -1;
-    clearSheet();
     Object.keys(dropped).forEach((k) => { delete dropped[k]; });
   }
 
@@ -695,12 +562,12 @@
 
   let stillOn = true;
 
-  /* A frame of the film kept as one pixel per grain, and shown the same way as the film. It has no ticker,
-     so no day and no count, and the picture takes those rows as well. */
+  /* The widest view of the film, kept as one pixel per cell and shown the same way as the film. It has no ticker
+     and no caption, and the picture takes the ticker's rows as well. */
   function drawStill() {
     const v = words.frame(STILL_T, geo.cols, geo.rows);
     v.ticker = null;
-    v.labels.push({ x: SOUL_X - v.cam.x, y: SOUL_Y - v.cam.y, text: 'your soul', color: '#fac860', back: '#0a0a0e', story: true });
+    v.caption = null;
     ctx.fillStyle = COLORS.term;
     ctx.fillRect(0, 0, geo.cols, geo.rows);
     const w = still.naturalWidth, h = still.naturalHeight;
@@ -984,22 +851,15 @@
   }
 
   function draw() {
-    const t = reel.t, falling = t >= T.FALL && t < T.WORLD;
-    const open = geo.spare > 0 && (falling || (t >= T.EDGE && t < T.HIST));
+    const t = reel.t, open = geo.spare > 0 && t >= T.LOGO;
     const rows = open ? geo.rows + geo.spare : geo.rows;
-    /* The fall has nothing to line up with, so it centres on all of that. At the edge the rock stays where it was. */
-    const v = reel.frame(t, geo.cols, falling ? rows : geo.rows);
+    const v = reel.frame(t, geo.cols, rows);
     /* The word sits in the middle of the columns that show, not of the last one, which is partly past the edge. */
     if (v.mode === 'logo') v.cam.x = Math.round((VW - geo.picW / geo.g) / 2);
-    if (v.mode !== 'none' || v.mode !== geo.lastMode) {
-      reel.paint(image.data, geo.cols, rows, v.cam);
-      ctx.putImageData(image, 0, 0, 0, 0, geo.cols, rows);
-      geo.lastMode = v.mode;
-    }
+    reel.paint(image.data, geo.cols, rows, v.cam);
+    ctx.putImageData(image, 0, 0, 0, 0, geo.cols, rows);
     if (open !== geo.open) { geo.open = open; reelEl.classList.toggle('under', open); }
     render(v);
-    const ghosting = reel.t >= T.GHOST && reel.t < T.EDGE;
-    if (ghosting !== reelEl.$ghost) { reelEl.$ghost = ghosting; reelEl.classList.toggle('ghosting', ghosting); }
     dirty = false;
   }
 
@@ -1039,7 +899,7 @@
     if (t >= T.END || (audio && audio.ended)) {
       /* The end card always lands. Past the last of the world there is nothing left to work out, so the picture
          gets there at once. If the world is still running, the video has the end instead. */
-      if (reel.t < T.EXIT) { hand(); return; }
+      if (reel.t < T.LOGO) { hand(); return; }
       while (reel.t + STEP / 2 <= HOLD) reel.tick();
       finish();
     }
@@ -1057,7 +917,7 @@
     if (!alive) return;
     alive = false;
     const was = playing || (wanted && started);
-    const at = started ? (ended ? 57.6 : Math.min(playing ? clockNow(performance.now()) : base, 57.6)) : 0;
+    const at = started ? (ended ? END_CARD : Math.min(playing ? clockNow(performance.now()) : base, END_CARD)) : 0;
     const muted = !!(audio && userMuted);
     playing = false;
     if (raf) cancelAnimationFrame(raf);
@@ -1259,25 +1119,6 @@
       window.removeEventListener('keydown', person);
       window.removeEventListener('scroll', person);
     });
-
-    /* The ghost follows the pointer over the picture, through rock, touching nothing. */
-    function ghostAt(e) {
-      if (!reel || e.pointerType === 'touch') return;
-      const r = pic.getBoundingClientRect();
-      /* Inside the columns and rows that show whole, so the ring is never cut off by the picture's edge. */
-      reel.pointer(Math.min(Math.floor((e.clientX - r.left) / geo.g), Math.floor(geo.picW / geo.g) - 3),
-        Math.min(Math.floor((e.clientY - r.top) / geo.g), Math.floor(geo.picH / geo.g) - 3));
-      dirty = true;
-      if (!playing && started && !ended) draw();
-    }
-    on(pic, 'pointermove', ghostAt);
-    on(pic, 'pointerleave', () => {
-      if (!reel) return;
-      reel.pointer(null);
-      dirty = true;
-      if (!playing && started && !ended) draw();
-    });
-
   }
 
   function idle(fn) {

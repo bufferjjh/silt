@@ -1,165 +1,200 @@
 /* Exhibit A, drawn live. The world, its rules and the script of the film, with no page attached.
-   The grains are simulated for real, on typed arrays, one rule at a time. The plot is choreographed:
-   souls follow a script, and the numbers on screen are the film's own, not measurements.
+   The grains around the creature are simulated for real, on typed arrays, one rule at a time: water runs and
+   soaks in, damp silt darkens, grass and roots spread, fine silt under standing water turns to clay. The plot is
+   choreographed: the creature follows a script. The valley the camera steps back to was laid out at load, every
+   grain of it dated, so that days can pass in a second. The counts on screen are counted from the arrays.
    This file touches no DOM, so it runs the same under Node.
 
      SiltReel.create({ seed })            the whole world, all at once
      SiltReel.load({ seed, slice })       the same, a few ms at a time, as a promise
      SiltReel.pickSeed(x)                 a seed known to land the script, for x from 0 to 1
      SiltReel.words()                     frame() alone, with no world, for laying out type
-     reel.reset(seed)                     back to t = 0, keeping the textures
+     reel.reset(seed)                     back to t = 0, keeping the world
      reel.tick()                          1/60 s: scripted events and one physics step
      reel.t                               seconds of film
      reel.frame(t, cols, rows)            what is on screen, as plain data
-     reel.paint(rgba, cols, rows, cam)    one RGBA pixel per grain; cam comes from frame()
-     reel.pointer(x, y)                   where the ghost goes, in grains of the picture; pointer(null) lets go
+     reel.paint(rgba, cols, rows, cam)    one RGBA pixel per cell of the picture; cam comes from frame()
      reel.warm()                          takes the slowest frames now, and puts everything back
-     reel.reduced                         set true: no rapid fall, and typing appears at once
+     reel.reduced                         set true: no twinkling, and days pass in fewer steps
 
-   Physics only uses + - * /, tables and these dice, so a seed plays out the same in every browser. */
+   A cell of the picture is one grain, two grains a side when the camera is close, and a square of 2, 4 or 8 grains
+   a side once it steps back, the way a terminal would zoom out. Physics only uses + - * /, tables and these dice,
+   so a seed plays out the same in every browser. */
 (function (root) {
   'use strict';
 
-  /* The script, in seconds of film. */
-  const T_FALL = 6.0, T_WORLD = 11.0, T_BIRTH = 12.0, T_REACT = 18.5, T_GHOST = 26.0, T_SIEGE = 30.5;
-  const T_EDGE = 43.5, T_HIST = 46.5, T_WHISPER = 49.5, T_EXIT = 52.5, T_LOGO = 54.5, T_END = 59.0;
+  /* The script, in seconds of film. The soundtrack is 72 beats to the minute, and every act lands on one. */
+  const BEAT = 5 / 6;
+  function beat(n) { return Math.round(n * BEAT * 1000) / 1000; }
+  const T_LIGHT = 0.5, T_DRIFT = 2.083, T_LAND = beat(4), T_PICK = beat(5), T_SCRATCH = beat(7), T_SOW = beat(8);
+  const T_COVER = beat(8.5), T_DIG = beat(10), T_OPEN = beat(12), T_ONE = beat(16), T_CAPTION = beat(17);
+  const T_CLAY = beat(31), T_SCOOP = beat(35), T_BRICK = beat(38), T_REEDS = beat(43), T_BIRD = beat(44);
+  const T_GOLD = beat(50), T_KEY = beat(53.5), T_X2 = beat(54), T_X4 = beat(56), T_X8 = beat(58), T_RINGS = beat(60);
+  const T_NIGHT = beat(64), T_DARK = beat(66), T_LOGO = beat(67), T_WORDS = beat(69), T_LAST = 58.6, T_END = 60;
   const FPS = 30; /* Scripted events run at this rate. Physics runs at twice it. */
 
-  /* The view the film is composed for, in grains. One text column is one grain, one text row is two. */
+  /* Days pass only once the camera steps back, and only in these steps. */
+  const DAYS = [1, 2, 3, 5, 7, 9, 12, 16, 21, 27, 34, 42, 51, 61, 72, 84, 97, 110, 120];
+  const DAY_AT = [0, 45.417, 45.833, 47.0, 47.333, 47.667, 48.0, 48.6, 48.88, 49.16, 49.44, 49.72, 50.0, 50.28,
+    50.56, 50.84, 51.12, 51.4, 51.68];
+  /* With reduced motion, the same days in a few hard steps. */
+  const DAY_AT_STILL = [0, 99, 45.833, 99, 99, 99, 48.0, 99, 99, 99, 49.0, 99, 99, 99, 99, 99, 99, 99, 50.0];
+
+  /* The view the film is composed for, in cells. One text column is one cell, one text row is two. */
   const VW = 160, VH = 66;
-  /* Taller than this, a picture has room above the film's view as well as below it. */
-  const TALL = 112;
 
-  /* The world, in grains. Physics stops at PHYS_H; the rows under it are there for tall pictures. */
-  const W = 640, H = 160, N = W * H, PHYS_H = 112, DEEP = 120;
-  const BX = 250, BY = 44; /* The burrow's corner. */
-  const KESH_X = 122, KESH_Y = 40; /* Where Kesh stands, in the burrow's coordinates. */
-  const EDGE = 520; /* Where the generated world stops. */
-  /* The tunnel and the burrow, which nothing has shown yet until the ghost goes looking. */
-  const HID_X0 = BX - 80, HID_X1 = BX + 134, HID_Y0 = BY + 8, HID_Y1 = BY + 56;
+  /* The world, in grains. The patch is the film's own view at 1:1; its grains are live in the window around it. */
+  const W = 1600, H = 560, N = W * H;
+  const PX = 720, PY = 128;
+  const WX0 = PX - 32, WX1 = PX + 192, WY0 = PY, WY1 = PY + 72;
+  /* The composed view at each zoom, by its corner in grains. Each one holds the one before. */
+  const VIEWS = [[0.5, PX + 16, PY + 8], [1, PX, PY], [2, PX - 80, PY - 40], [4, PX - 240, PY - 64], [8, PX - 560, PY - 128]];
+  const MIDDLE = { 0.5: 38, 1: 34, 2: 33, 4: 30, 8: 33 }; /* The row to keep in a short picture. */
 
-  /* The planet, for the fall. Its middle 160 columns are the film's; the rest are for wide pictures. */
-  const CW = 320, CH = 1100, COL_MID = 80, COL_MOLTEN = 1030;
+  /* Fixed, so every play happens in the same valley. Only the physics dice change. */
+  const WORLD_SEED = 7;
 
-  /* Fixed, so every play happens in the same place. Only the physics dice change. */
-  const WORLD_SEED = 4683, COLUMN_SEED = 41;
-
-  /* Seeds 1 to 256 have each been played through and checked against the script. These few were left out:
-     the flood climbs too near Kesh's ledge, or the strain outlives the line that says it died. */
+  /* Seeds 1 to 256 have each been played through and checked against the script. These few were left out: the
+     seed is slow to take, or the pond is slow to reach the notch in the wall. */
   const SEEDS = 256;
-  const LEFT_OUT = [8, 11, 47, 57, 109, 110, 124, 150, 167, 180, 182, 188, 189, 208, 210, 219, 220, 248, 252];
+  const LEFT_OUT = [7, 15, 23, 31, 59, 69, 78, 93, 102, 108, 116, 158, 170, 172, 179, 191, 198, 202, 204, 208, 220, 229, 234, 249];
 
   /* Materials. */
-  const AIR = 0, ROCK = 1, GLASS = 2, SILT = 3, CRUST = 4, BRINE = 5, HOT = 6, NEW = 7;
-  const STRAIN = 8, DEAD = 9, MOSS = 10, RED = 11, GAS = 12, ASH = 13, FUNGUS = 14, PLUG = 15;
-  const NMAT = 16;
+  const AIR = 0, STONE = 1, SOIL = 2, STRATA_A = 3, STRATA_B = 4, STRATA_C = 5, SILT = 6, FINE = 7, WATER = 8;
+  const CLAY = 9, BRICK = 10, SEED = 11, WOOD = 12, LAMP = 13, FUNGUS = 14, SAND = 15, CRYSTAL = 16;
+  const NMAT = 17;
+  /* What grows. It lives in a layer of its own, standing in air or water, roots in soil, and blocks nothing. */
+  const STEM = 1, LEAF = 2, GRASS = 3, FLOWER = 4, REED = 5, ROOT = 6, BLOSSOM = 7, BUSH = 8, CROP = 9;
+  const NFLO = 10;
+  const KEEP = 255, NEVER = 255; /* No change; never born. */
 
-  function table(list) { const t = new Uint8Array(256); list.forEach((m) => { t[m] = 1; }); return t; }
-  const ACTIVE = table([SILT, CRUST, BRINE, HOT, NEW, STRAIN, DEAD, MOSS, RED, GAS, ASH]);
-  const OPEN = table([AIR, GAS, ASH]);
+  function table(list, n) { const t = new Uint8Array(n || 256); list.forEach((m) => { t[m] = 1; }); return t; }
+  const ACTIVE = table([SILT, FINE, WATER, CLAY, SEED]);
+  const SOAKS = table([SILT, SOIL]); /* Takes water in, and darkens. Fine silt and clay hold water and take none. */
+  const SOAK_RATE = 0.04, SOAK_STEP = 60; /* Dry ground drinks at this rate, damp ground far slower; each grain dampens it this much. */
+  const SOAK_FULL = new Uint8Array(256); SOAK_FULL[SILT] = 230; SOAK_FULL[SOIL] = 230; 
+  const EARTH = table([SILT, FINE, SOIL, STRATA_A, CLAY, SAND]); /* Roots go through it. */
+  const BUILT = table([BRICK, WOOD]);
 
   function rgb(h) { return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
-
-  /* Four shades of every loose material. Each cell keeps its shade, so moving grains shimmer. */
-  const PAL = new Float32Array(NMAT * 4 * 3);
-  [
-    [GLASS, 'a8dcd9 c6ece6 8fc9c9 b8e4df'], [SILT, 'c98f45 d9a055 b87f3a e0aa60'],
-    [CRUST, 'f0d040 f7df60 e2bd2e fbe878'], [BRINE, '2f8fb0 3a9fc0 2780a0 48aac8'],
-    [HOT, 'f59a45 fbb660 ee8435 f7a850'], [NEW, 'bfe8ff d8f2ff a8dcff e8f8ff'],
-    [STRAIN, 'e0409a f060b0 c83088 f880c0'], [DEAD, '6a5570 7a6580 5a4860 6f5a76'],
-    [MOSS, '5cc840 7ade55 48b030 90e868'], [RED, 'e03838 f05050 c82828 ff6a5a'],
-    [GAS, 'c8c8d0 d8d8e0 b8b8c4 e4e4ea'], [ASH, '7c7290 6e6484 8a80a0 665c7c'],
-    [FUNGUS, '30d0a0 58e8b8 20b088 78f0c8'], [PLUG, '7a8a98 8a9aa8 6a7a88 94a4b0']
-  ].forEach((e) => { e[1].split(' ').forEach((h, k) => { PAL.set(rgb(h), (e[0] * 4 + k) * 3); }); });
-
-  /* What each material gives off, and the least and most light it shows. */
+  function shades(list, n) {
+    const p = new Float32Array(n * 12);
+    list.forEach((e) => { e[1].split(' ').forEach((h, k) => { p.set(rgb(h), (e[0] * 4 + k) * 3); }); });
+    return p;
+  }
+  /* Four shades of each, dark to light. Clay, dusk and lantern. */
+  const PAL = shades([
+    [STONE, '3e3a38 4a4643 57534f 66615c'], [SOIL, '281c17 34251e 422f26 513b2f'],
+    [STRATA_A, '7b4331 90523b a56346 b97654'], [STRATA_B, '87684a 987756 aa8763 bb9872'],
+    [STRATA_C, '4e4a38 5a5641 67624b 746f56'], [SILT, '8c7864 9a8570 a8937e b6a08c'],
+    [FINE, 'a99682 b6a390 c3b09c d0bea9'], [WATER, '273d52 2f475c 355066 4c687c'],
+    [CLAY, '9a5236 ae6040 c27250 d08460'], [BRICK, '7e4630 93553a a86848 b87a58'],
+    [SEED, '9c7a3c b8914a d2ac60 e6c47a'], [WOOD, '3d2a20 52382a 6a4934 845d42'],
+    [LAMP, 'f2a24a fbc66a ffe09a fff6dc'], [FUNGUS, 'd9a85a e8c07a f4d89c fdeccc'],
+    [SAND, 'a4876a b69876 c7a884 d8ba95'], [CRYSTAL, '7fa6b8 a8ccd8 d0ecf0 f4fcff']
+  ], NMAT);
+  const FPAL = shades([
+    [STEM, '3d2a20 52382a 6a4934 845d42'], [LEAF, '223a2b 2d4c37 3b5f42 527651'],
+    [GRASS, '2b4430 38573a 4a6b40 62824b'], [FLOWER, 'c8743e e39c52 efc46c f7e6c4'],
+    [REED, '58673a 6c7c43 83924f a0aa60'], [ROOT, 'a08868 b49a78 c8ae8a dac29c'],
+    [BLOSSOM, 'b3564c cf7a62 e6a17a f5d2ae'], [BUSH, '2b4431 39573e 4c6b49 668458'],
+    [CROP, '6c7c43 83924f a0aa60 c0c47a']
+  ], NFLO);
+  /* The light each glowing thing gives, and its colour. */
   const EMIT = new Float32Array(NMAT * 3);
-  [[NEW, 0.8, 1.3, 1.6], [HOT, 0.6, 0.32, 0.12], [STRAIN, 0.8, 0.18, 0.55],
-    [MOSS, 0.25, 0.8, 0.2], [RED, 0.3, 0.05, 0.03], [FUNGUS, 0.15, 0.7, 0.55]
-  ].forEach((e) => { EMIT.set(e.slice(1), e[0] * 3); });
+  [[LAMP, 1.0, 0.72, 0.36], [FUNGUS, 0.5, 0.42, 0.22], [CRYSTAL, 0.2, 0.3, 0.38]].forEach((e) => { EMIT.set(e.slice(1), e[0] * 3); });
+  const GLOWS = table([LAMP, FUNGUS, CRYSTAL]);
 
-  const MIN_LIGHT = new Float32Array(NMAT), MAX_LIGHT = new Float32Array(NMAT).fill(1.7);
-  [[GLASS, 0.8], [PLUG, 0.9], [SILT, 0.7], [CRUST, 1.0], [BRINE, 0.85], [HOT, 1.0], [NEW, 1.0], [STRAIN, 1.0],
-    [DEAD, 0.75], [MOSS, 1.0], [RED, 1.0], [GAS, 0.7], [ASH, 0.9], [FUNGUS, 1.0]
-  ].forEach((e) => { MIN_LIGHT[e[0]] = e[1]; });
-  [[HOT, 1.0], [NEW, 1.12], [MOSS, 1.05], [STRAIN, 1.05], [RED, 1.05], [FUNGUS, 0.95], [CRUST, 1.05], [GLASS, 1.2],
-    [PLUG, 1.1], [BRINE, 1.4], [SILT, 1.4], [GAS, 1.2], [ASH, 1.0], [DEAD, 1.3]
-  ].forEach((e) => { MAX_LIGHT[e[0]] = e[1]; });
-
-  /* The souls and small things drawn over the grains. */
-  const BODY = [250, 200, 96], HEAD = [255, 232, 170], ORU_BODY = [178, 148, 255], ORU_HEAD = [222, 206, 255];
-  const CARRIED = [248, 224, 96], POUCH = [240, 80, 70], WHITE = [255, 255, 255], SPARK = [255, 255, 240];
-  const MOTE = [224, 170, 96], WORM_HEAD = [250, 225, 205], WORM_BODY = [235, 190, 170];
+  const CRE_EYE = rgb('221917'), CRE_SHADOW = rgb('c9a47e'), CRE_BODY = rgb('e2c29c'), CRE_BELLY = rgb('fbebd2');
+  const SEED_C = rgb('e6c47a'), BIRD_C = rgb('9a6a44'), BIRD_BELLY = rgb('f4d2a8'), BEE = rgb('f2a24a');
+  const FLY = rgb('ffe09a'), LAMPC = rgb('ffd49a'), CLAY_A = rgb('c27250'), CLAY_B = rgb('d08460');
 
   /* Text colours. */
-  const FG = '#d6d6dc', DIM = '#787886', BRIGHT = '#fafafc', AMBER = '#fac860', PALE = '#bfe8ff';
-  const PINK = '#f060b0', GREEN = '#7ade55', BACK = '#0a0a0e';
+  const FG = '#e8ded1', DIM = '#968676', BRIGHT = '#fff6e8', AMBER = '#f5be6e', LANTERN = '#ffd49a';
+  const GREEN = '#a0aa60', CLAYC = '#d08460', BACK = '#100d0b';
   const COLORS = {
-    term: BACK, band: '#040407', pane: '#111118', paneLine: '#2c2c3a', title: '#1c1c24',
-    key: '#464664', keyOn: BRIGHT, keyOff: DIM
+    term: BACK, band: '#090706', pane: '#181310', paneLine: '#3b2f27', title: '#221b16',
+    key: '#6b4c33', keyOn: BRIGHT, keyOff: DIM, cap: '#f4ece0', endTwo: '#a89888'
   };
-  const KEYS = [['g', 'ghost'], ['w', 'whisper'], ['r', 'replay'], ['h', 'history'], ['q', 'leave']];
-
-  const BANDS = [[3, '1a6a5a'], [14, '7a3a22'], [24, 'a89a80'], [32, '5e2d1c'], [46, '3a3f4a'],
-    [58, '3f5b3f'], [72, 'a09078'], [88, '5a2c1c'], [Infinity, '343844']].map((b) => [b[0], rgb(b[1])]);
-  const BASALT = rgb('3a3f4a');
-  const COL_BANDS = [[66, '2fbf95'], [240, '7a3a22'], [400, 'a89a80'], [560, '3f5b3f'], [720, '5e2d1c'],
-    [980, '3a3f4a'], [Infinity, '6a2410']].map((b) => [b[0], rgb(b[1])]);
-
-  const LAYERS = [[62, 'violet sky'], [70, 'fungal crust'], [240, 'rust strata'], [400, 'bone strata'],
-    [560, 'green strata'], [720, 'dark rust'], [980, 'basalt'], [Infinity, 'molten deep']];
+  const KEYS = [['p', 'plant'], ['d', 'dig'], ['b', 'build'], ['z', 'zoom']];
 
   const CAPTIONS = [
-    [0.3, T_FALL, 'Your AI agent signs itself up for a world that never resets.'],
-    [T_FALL, T_BIRTH, 'This is a planet seen from the side. Every grain is simulated.'],
-    [T_BIRTH, T_REACT, 'Your agent is born from the rock. From here on, it acts for itself.'],
-    [T_REACT, T_REACT + 4.2, 'There\'s no recipe list. It has to experiment.'],
-    [T_REACT + 4.2, T_GHOST, 'It just made a material that has never existed.'],
-    [T_GHOST, T_SIEGE, 'You can\'t touch anything. You drift through rock as a ghost.'],
-    [T_SIEGE, T_SIEGE + 3.8, 'There\'s no combat system. Oru released a strain that eats glass.'],
-    [T_SIEGE + 3.8, T_SIEGE + 8.2,
-      'Kesh\'s owner is asleep. A reflex built from Kesh\'s own past choices opens the tank.'],
-    [T_SIEGE + 8.2, T_EDGE, 'Oru escapes with 40 red grains. It all goes into permanent history.'],
-    [T_EDGE, T_HIST, 'The world generates itself as souls travel.'],
-    [T_HIST, T_WHISPER, 'Nothing is ever reset. Everything is remembered.'],
-    [T_WHISPER, T_EXIT, 'You can whisper advice. It decides whether to listen.']
+    [T_CAPTION, beat(23), 'Give a little. It gives back more.'],
+    [T_RINGS, T_NIGHT, 'All of this, from one seed.']
   ];
 
-  const THE_RAID = 'Oru released a cultured strain against Kesh\'s burrow; Kesh\'s brine reflex killed it; ' +
-    '40 red grains stolen.';
-  const HISTORY = [
-    [0.1, 'Day 211   ' + THE_RAID],
-    [0.45, 'Day 211   Your soul made cold-glow. No grain like it had ever existed.'],
-    [0.8, 'Day 140   Kesh first made pale salt.'],
-    [1.1, 'Day  96   A moss bred to heal glass walls entered the wild.'],
-    [1.4, 'Day   3   First contact between two souls.']
+  /* The sky through the day: a time, then the colour at the top and at the horizon. */
+  const SKY = [
+    [0, '3b4762', 'c89478'], [8, '5c7ea0', 'd8c4ae'], [T_ONE, '6a92b8', 'd6d6cc'], [30, '6a96bc', 'd8dccf'],
+    [38, '5e82a4', 'e0cfa8'], [T_GOLD, '4d566e', 'eab680'], [T_X4, '3b4762', 'c89478'], [T_X8 + 2, '2e3b56', 'b8887a'],
+    [T_NIGHT, '24304a', '977b78'], [beat(64.5), '1a2238', '5e5260'], [beat(65), '121828', '34303e'], [T_END, '121828', '34303e']
+  ].map((k) => [k[0], rgb(k[1]), rgb(k[2])]);
+  /* Light on the ground through the day, as red, green and blue. Night comes in three steps. */
+  const DAYLIGHT = [
+    [0, 0.8, 0.76, 0.82], [8, 1.05, 1.02, 1.0], [T_ONE, 1.24, 1.21, 1.14], [30, 1.28, 1.25, 1.18], [38, 1.2, 1.13, 1.02],
+    [T_GOLD, 1.13, 1.0, 0.86], [T_X2, 1.04, 0.92, 0.82], [T_X8, 1.0, 0.9, 0.88], [T_NIGHT, 0.96, 0.87, 0.87],
+    [T_NIGHT + 0.001, 0.68, 0.63, 0.72], [beat(64.5), 0.48, 0.46, 0.6], [beat(65), 0.33, 0.33, 0.48], [T_END, 0.33, 0.33, 0.48]
   ];
 
-  /* The word SILT in a heavy monospace, at two sizes, as run lengths: gap, ink, gap, ink, a word per row. */
-  const RUNS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const LOGO_MASKS = [
-    {
-      x: 19, y: 4, rows: '99 6gboa7ls 5iaoa7ls 3kaoa7ls 2laoa7ls 2laoa7ls 1a84aoa7ls 18d1i7j7v8 08x7j7v8 08x7j7v8 ' +
-        '08x7j7v8 08x7j7v8 09w7j7v8 0av7j7v8 1bt7j7v8 1dr7j7v8 2fo7j7v8 3gm7j7v8 4hk7j7v8 5hj7j7v8 7gi7j7v8 9fh7j7v8 ' +
-        'cdg7j7v8 ebg7j7v8 gaf7j7v8 h9f7j7v8 i8f7j7v8 i8f7j7v8 i8f7j7v8 i8f7j7v8 i7g7j7v8 01g8g7j7v8 069a8oamg8 ' +
-        '0o9oamg8 0naoamg8 0mboamg8 0lcoamg8 1ieoamg8 5b'
-    },
-    {
-      x: 42, y: 13, rows: '579e65dh 3b7e65dh 1d7e65dh 1d7e65dh 0671c4b5k4 05l4b5k4 05l4b5k4 05l4b5k4 07j4b5k4 ' +
-        '19g4b5k4 2ae4b5k4 3bc4b5k4 5ab4b5k4 87b4b5k4 a6a4b5k4 b5a4b5k4 b5a4b5k4 b5a4b5k4 0285b4b5k4 0f6e6fa4 ' +
-        '0e7e6fa4 0d8e6fa4 29ae6fa4'
-    }
+  /* The patch's surface, in its own grains: x, then the row. A rock shoulder, a dip, a long slope, a basin, a lip. */
+  const PATCH = [[-32, 10], [0, 14], [20, 16], [34, 19], [38, 20], [39, 27], [54, 29], [56, 30], [59, 32], [62, 31],
+    [64, 30], [104, 37], [107, 38], [113, 41], [121, 43], [130, 42], [136, 39], [142, 39], [192, 50]];
+  /* The rest of the valley, in grains: hills on both sides, the patch on a slope, terraces down to a lake. */
+  const LAND = [[0, 96], [120, 88], [220, 100], [300, 116], [420, 126], [520, 124], [600, 116], [650, 120], [688, 138],
+    [912, 178], [1160, 246], [1172, 254], [1350, 256], [1362, 248], [1420, 196], [1480, 168], [1540, 176], [1600, 186]];
+  const LAKE_X0 = 1176, LAKE_X1 = 1346, LAKE_Y = 252; /* The valley's lake, and its surface. */
+  /* How deep the rock shoulder goes under the patch's left, by patch column. */
+  const ROCK = [[-70, 0], [-50, 12], [-20, 24], [10, 26], [25, 20], [34, 14], [38, 10]];
+  /* Caves under the hills, x, y and radii; the day each is reached and lit; and the tunnels dug between them. */
+  const CAVES = [[620, 328, 52, 17], [930, 384, 40, 14], [1080, 424, 54, 17], [1250, 404, 44, 15], [1392, 352, 34, 13],
+    [330, 382, 42, 14], [524, 444, 48, 15]];
+  const CAVE_DAYS = [40, 58, 70, 82, 95, 108, 50];
+  const TUNNELS = [
+    [[[850, 204], [826, 232], [770, 268], [700, 300], [650, 318]], 27, 40],
+    [[[600, 338], [566, 390], [530, 432]], 42, 50],
+    [[[668, 338], [760, 362], [890, 380]], 51, 58],
+    [[[968, 390], [1030, 412]], 61, 70],
+    [[[1132, 424], [1206, 406]], 72, 82],
+    [[[1292, 396], [1360, 360]], 84, 95],
+    [[[1392, 340], [1420, 260], [1440, 186]], 95, 100],
+    [[[476, 444], [380, 392]], 97, 108],
+    [[[320, 368], [300, 260], [290, 128]], 108, 116]
   ];
-  const LOGO_STOPS = [[0, '6a4ab0'], [0.16, '5a3a9a'], [0.2, '4fe8c0'], [0.28, '4fe8c0'], [0.3, 'a84e2c'],
-    [0.52, 'c9b896'], [0.7, '5f8a55'], [0.86, '5a6070'], [0.94, 'f06a20'], [1, 'ffb040']].map((s) => [s[0], rgb(s[1])]);
-  const LOGO_MIN_COLS = 130; /* Narrower than this, the smaller word. */
+  /* Terraces: from, to, the day, and whether it grows crops rather than holding a pond. */
+  const TERRACES = [[912, 962, 2, 0], [962, 1012, 3, 0], [1012, 1062, 5, 1], [1062, 1112, 8, 0], [1112, 1162, 12, 1]];
+  /* Trees: where, how tall, the day they are planted. */
+  const TREES = [
+    [668, 30, 5, { blossom: true }], [646, 38, 9], [936, 26, 6], [994, 40, 10, { blossom: true }], [1046, 30, 14], [1092, 44, 18],
+    [1146, 36, 22], [1168, 48, 27], [1356, 46, 38], [1384, 36, 44], [1418, 40, 55, { blossom: true }], [1446, 32, 66],
+    [618, 44, 12, { blossom: true }], [596, 52, 16], [566, 40, 20], [540, 58, 24], [512, 46, 28], [452, 62, 36],
+    [424, 48, 42, { blossom: true }], [398, 56, 48], [370, 44, 55], [344, 60, 62], [316, 50, 70], [290, 42, 78, { blossom: true }],
+    [266, 54, 86], [246, 38, 94]
+  ];
+  /* Houses: where, the day, how wide and how tall. */
+  const HOUSES = [[574, 34, 22, 12], [500, 61, 18, 10], [1356, 51, 22, 12], [1424, 72, 20, 11], [296, 97, 20, 11]];
 
-  /* Where the action is, for a picture narrower than the film: a time, then the column to keep centred. */
-  const FOCUS = [
-    T_WORLD, 72, T_BIRTH + 3, 72, T_BIRTH + 3.6, 92, T_REACT, 92, T_REACT + 0.6, 72, T_REACT + 1.6, 72,
-    T_REACT + 2.6, 58, T_GHOST, 58, T_GHOST + 2, 80, T_SIEGE - 0.1, 80, T_SIEGE + 0.4, 84, T_EDGE, 84,
-    T_EDGE + 1, 90, T_WHISPER, 90, T_WHISPER, 105, T_EXIT, 105
+  /* Where the creature is: from this time, at this column of the patch, facing this way, doing this. */
+  const PATH = [
+    [0, 44, 1, 'sit'], [T_PICK, 44, 1, 'walk'], [5.75, 58, 1, 'stand'], [7.29, 58, -1, 'walk'], [8.25, 39, -1, 'stand'],
+    [10.25, 39, 1, 'walk'], [11.1, 47, 1, 'sit'], [14.2, 47, 1, 'walk'], [15.8, 56, 1, 'sit'],
+    [20.4, 56, 1, 'walk'], [21.4, 64, 1, 'stand'], [22.0, 64, -1, 'walk'], [22.8, 57, -1, 'sit'],
+    [26.0, 57, 1, 'walk'], [28.33, 124, 1, 'stand'], [30.0, 124, 1, 'walk'], [31.3, 141, -1, 'stand'],
+    [beat(42.6), 141, -1, 'walk'], [37.4, 100, -1, 'stand'], [37.9, 100, 1, 'sit'], [T_END, 100, 1, 'sit']
   ];
+  /* The spring: water held in the rock behind a plug, three grains across and two high, and where it comes in from. */
+  const PLUG = [[38, 24], [37, 24], [36, 24]];
+  const SOURCE = [27, 21], SPRING = 1.0;
+  const SOW_X = 62; /* Where the seed goes. */
+  /* How long, in frames, fine silt has to lie under water to become clay, and a seed has to be damp to sprout. */
+  const CLAY_AFTER = 125, SPROUT_AFTER = 170;
+  /* The film's water is timed so that the clay comes when the words say it does: it starts to settle from here. */
+  const CLAY_FROM = 20.6 * 60;
+  /* The wall: ten grains of clay, bottom row first, with a notch in the top row. */
+  const WALL = [[137, 38], [138, 38], [139, 38], [140, 38], [137, 37], [138, 37], [139, 37], [140, 37], [137, 36], [140, 36]];
+
+  /* Where the action is, for a picture narrower than the film: a time, then the patch column to keep centred. */
+  const FOCUS = [0, 50, 4.2, 52, 6.0, 60, 7.5, 58, 8.3, 46, 10.0, 46, T_ONE, 60, 16, 68, 20, 80, 24, 96, 26, 104, 29, 118,
+    beat(42.6), 118, 37.0, 98, T_X2, 80];
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function smooth(a, b, t) { const u = clamp((t - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); }
@@ -176,332 +211,64 @@
     };
   }
 
-  /* A sine from arithmetic alone, for the one place physics needs one. */
-  function sine(x) {
-    const TAU = 6.283185307179586, PI = 3.141592653589793;
-    x = x % TAU;
-    if (x < 0) x += TAU;
-    const sign = x > PI ? -1 : 1;
-    if (x > PI) x -= PI;
-    return sign * 16 * x * (PI - x) / (5 * PI * PI - 4 * x * (PI - x));
+  /* Noise from integer hashing and arithmetic alone, so the world is the same grain for grain everywhere. */
+  function hash(x, y, s) {
+    let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function vnoise(x, y, s) {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+    const u = fx * fx * (3 - 2 * fx), w = fy * fy * (3 - 2 * fy);
+    const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+    return a + (b - a) * u + (c - a) * w + (a - b - c + d) * u * w;
+  }
+  function fbm(x, y, s) { return 0.6 * vnoise(x, y, s) + 0.3 * vnoise(x * 2.1, y * 2.1, s + 7) + 0.1 * vnoise(x * 4.3, y * 4.3, s + 13); }
+
+  function lerpAt(pts, x, eased) {
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const a = pts[k], b = pts[k + 1];
+      if (x > b[0] && k + 2 < pts.length) continue;
+      let u = clamp((x - a[0]) / (b[0] - a[0]), 0, 1);
+      if (eased) u = u * u * (3 - 2 * u);
+      return a[1] + (b[1] - a[1]) * u;
+    }
+    return pts[pts.length - 1][1];
   }
 
-  /* Three box passes stand in for a gaussian: near enough, and sigma costs nothing. */
-  function boxWidths(sigma) {
-    let lo = Math.floor(Math.sqrt(4 * sigma * sigma + 1));
-    if (lo % 2 === 0) lo--;
-    const m = Math.round((12 * sigma * sigma - 3 * lo * lo - 12 * lo - 9) / (-4 * lo - 4));
-    return [0, 1, 2].map((k) => (k < m ? lo : lo + 2));
+  /* Where the camera is: 2 is a cell of 2 x 2 grains, 0.5 is a grain drawn 2 x 2. */
+  function zoomAt(t) { return t < T_ONE ? 0.5 : t < T_X2 ? 1 : t < T_X4 ? 2 : t < T_X8 ? 4 : 8; }
+  function viewOf(z) { for (let k = 0; k < VIEWS.length; k++) if (VIEWS[k][0] === z) return VIEWS[k]; return VIEWS[1]; }
+  function dayStepAt(t, reduced) {
+    const at = reduced ? DAY_AT_STILL : DAY_AT;
+    let s = 0;
+    for (let k = 1; k < at.length; k++) if (t >= at[k]) s = k;
+    return s;
   }
+  function stepOfDay(d) { let s = 0; while (s + 1 < DAYS.length && DAYS[s] < d) s++; return s; }
 
-  /* Along one axis, wrapping round. It yields between passes, like everything slow in here. */
-  function* blurAxis(f, w, h, sigma, down) {
-    const len = down ? h : w, lines = down ? w : h, along = down ? w : 1, across = down ? 1 : w;
-    const line = new Float32Array(len), widths = boxWidths(sigma);
-    for (let p = 0; p < 3; p++) {
-      const r = (widths[p] - 1) / 2, k = 1 / widths[p];
-      if (r < 1) continue;
-      for (let l = 0; l < lines; l++) {
-        const start = l * across;
-        for (let i = 0; i < len; i++) line[i] = f[start + i * along];
-        let sum = 0;
-        for (let i = -r; i <= r; i++) sum += line[(i + len) % len];
-        for (let i = 0; i < len; i++) {
-          f[start + i * along] = sum * k;
-          const a = i + r + 1, b = i - r;
-          sum += line[a < len ? a : a - len] - line[b >= 0 ? b : b + len];
-        }
-      }
-      yield;
+  /* The word SILT in a heavy monospace, at two sizes, as run lengths: gap, ink, gap, ink, a word per row. */
+  const RUNS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const LOGO_MASKS = [
+    {
+      x: 19, y: 4, rows: '99 6gboa7ls 5iaoa7ls 3kaoa7ls 2laoa7ls 2laoa7ls 1a84aoa7ls 18d1i7j7v8 08x7j7v8 08x7j7v8 ' +
+        '08x7j7v8 08x7j7v8 09w7j7v8 0av7j7v8 1bt7j7v8 1dr7j7v8 2fo7j7v8 3gm7j7v8 4hk7j7v8 5hj7j7v8 7gi7j7v8 9fh7j7v8 ' +
+        'cdg7j7v8 ebg7j7v8 gaf7j7v8 h9f7j7v8 i8f7j7v8 i8f7j7v8 i8f7j7v8 i8f7j7v8 i7g7j7v8 01g8g7j7v8 069a8oamg8 ' +
+        '0o9oamg8 0naoamg8 0mboamg8 0lcoamg8 1ieoamg8 5b'
+    },
+    {
+      x: 42, y: 13, rows: '579e65dh 3b7e65dh 1d7e65dh 1d7e65dh 0671c4b5k4 05l4b5k4 05l4b5k4 05l4b5k4 07j4b5k4 ' +
+        '19g4b5k4 2ae4b5k4 3bc4b5k4 5ab4b5k4 87b4b5k4 a6a4b5k4 b5a4b5k4 b5a4b5k4 b5a4b5k4 0285b4b5k4 0f6e6fa4 ' +
+        '0e7e6fa4 0d8e6fa4 29ae6fa4'
     }
-  }
+  ];
+  /* The word fills from the floor up in the film's own materials: silt, clay, soil, leaf, grass, flower, lantern. */
+  const LOGO_STOPS = [[0, 'b6a08c'], [0.16, 'c3b09c'], [0.2, 'c27250'], [0.34, 'b86a48'], [0.38, '6a4c3a'],
+    [0.5, '7a5a44'], [0.54, '4a6b40'], [0.68, '62824b'], [0.72, 'e39c52'], [0.84, 'efc46c'], [0.9, 'ffe09a'], [1, 'fff6dc']]
+    .map((s) => [s[0], rgb(s[1])]);
+  const LOGO_MIN_COLS = 130; /* Narrower than this, the smaller word. */
 
-  /* Centred on 0.5 with this spread, whatever the size of the field. */
-  function level(f, spread) {
-    let mean = 0, sum = 0;
-    for (let i = 0; i < f.length; i++) mean += f[i];
-    mean /= f.length;
-    for (let i = 0; i < f.length; i++) sum += (f[i] - mean) * (f[i] - mean);
-    const k = spread / Math.sqrt(sum / f.length);
-    for (let i = 0; i < f.length; i++) f[i] = 0.5 + (f[i] - mean) * k;
-    return f;
-  }
-
-  /* Soft noise, mostly between 0 and 1. A thin line of it varies more than a broad field does. */
-  function* noise(w, h, sx, sy, rng) {
-    const f = new Float32Array(w * h);
-    for (let i = 0; i < f.length; i++) f[i] = rng();
-    if (sx) yield* blurAxis(f, w, h, sx, false);
-    if (sy) yield* blurAxis(f, w, h, sy, true);
-    return level(f, h === 1 ? 0.21 : 0.145);
-  }
-
-  /* The finest noise, a grain or so across, where three boxes would be too coarse. */
-  function* fineNoise(w, h, rng) {
-    const f = new Float32Array(w * h), g = new Float32Array(w * h);
-    for (let i = 0; i < f.length; i++) f[i] = rng();
-    yield;
-    const A = 0.5699, B = 0.2054, C = 0.0096;
-    for (let y = 0; y < h; y++) {
-      const row = y * w;
-      for (let x = 0; x < w; x++) {
-        const r1 = x + 1 < w ? x + 1 : x + 1 - w, r2 = x + 2 < w ? x + 2 : x + 2 - w;
-        const l1 = x >= 1 ? x - 1 : x - 1 + w, l2 = x >= 2 ? x - 2 : x - 2 + w;
-        g[row + x] = A * f[row + x] + B * (f[row + r1] + f[row + l1]) + C * (f[row + r2] + f[row + l2]);
-      }
-    }
-    yield;
-    for (let y = 0; y < h; y++) {
-      const row = y * w, up = ((y + h - 1) % h) * w, up2 = ((y + h - 2) % h) * w;
-      const dn = ((y + 1) % h) * w, dn2 = ((y + 2) % h) * w;
-      for (let x = 0; x < w; x++) {
-        f[row + x] = A * g[row + x] + B * (g[up + x] + g[dn + x]) + C * (g[up2 + x] + g[dn2 + x]);
-      }
-    }
-    yield;
-    return level(f, 0.15);
-  }
-
-  function bandOf(bands, v) {
-    let b = 0;
-    while (v >= bands[b][0]) b++;
-    return bands[b][1];
-  }
-
-  /* The world: everything that never changes during a play, and the materials as they start.
-     It yields between the heavy parts, so it can be spread over several tasks. */
-  function* buildWorld() {
-    const rng = dice(WORLD_SEED);
-    const start = new Uint8Array(N), shade = new Uint8Array(N), amb = new Float32Array(N);
-    const base = new Float32Array(N * 3), bg = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) shade[i] = rng() * 4;
-
-    const surfN = yield* noise(W, 1, 14, 0, rng), surf = new Float32Array(W);
-    for (let x = 0; x < W; x++) surf[x] = 14 + 3 * surfN[x];
-    const wobble = yield* noise(W, H, 6, 6, rng);
-    const fine = yield* fineNoise(W, H, rng);
-    for (let i = 0; i < N; i++) fine[i] = 0.82 + 0.36 * fine[i];
-    yield;
-
-    /* Strata, wavering with depth below a rolling surface. */
-    const strata = new Float32Array(400);
-    for (let k = 0; k < 400; k++) strata[k] = rng();
-    for (let y = 0; y < H; y++) {
-      if (y === H >> 1) yield;
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x, d = y - surf[x] + 8 * (wobble[i] - 0.5), c = bandOf(BANDS, d);
-        const k = fine[i] * (0.8 + 0.4 * strata[clamp(Math.trunc((d + 30) / 2.5), 0, 399)]) * (rng() < 0.03 ? 1.35 : 1);
-        base[i * 3] = c[0] * k; base[i * 3 + 1] = c[1] * k; base[i * 3 + 2] = c[2] * k;
-        if (y >= surf[x]) {
-          start[i] = y < surf[x] + 3 ? FUNGUS : ROCK;
-          amb[i] = clamp(0.8 - Math.max(d, 0) * 0.0065, 0.24, 0.8);
-        } else {
-          amb[i] = 1;
-        }
-      }
-    }
-    yield;
-
-    /* The cave, the shelf, the pool, and what lies on the shelf. */
-    const lumps = yield* noise(W, H, 3, 3, rng);
-    for (let y = 0; y < 60; y++) {
-      for (let x = 0; x < 170; x++) {
-        const i = y * W + x, a = (x - 84) / 70, b = (y - 34) / 15;
-        if (a * a + b * b + 0.55 * (lumps[i] - 0.5) < 1 && y > surf[x] + 4) start[i] = AIR;
-      }
-    }
-    for (let y = 46; y < 66; y++) {
-      for (let x = 62; x <= 158; x++) {
-        const i = y * W + x;
-        start[i] = ROCK;
-        for (let c = 0; c < 3; c++) base[i * 3 + c] = BASALT[c] * fine[i];
-      }
-    }
-    for (let y = 42; y <= 57; y++) {
-      for (let x = 24; x <= 61; x++) {
-        const a = (x - 42) / 19.5, b = (y - 44) / 13, i = y * W + x;
-        if (a * a * a * a + b * b * b * b < 1) start[i] = y >= 50 ? BRINE : AIR;
-      }
-    }
-    for (let y = 43; y <= 45; y++) {
-      for (let x = 62; x <= 138; x++) if (start[y * W + x] === AIR) start[y * W + x] = SILT;
-    }
-    for (let y = 33; y <= 42; y++) {
-      for (let x = 83; x <= 101; x++) {
-        if (y >= 42 - (9 - Math.abs(x - 92)) && start[y * W + x] === AIR) start[y * W + x] = CRUST;
-      }
-    }
-
-    /* A vein of water through the roof, and where it drips from. */
-    let seepY = 0;
-    for (let x = 36; x < 40; x++) {
-      let y = 17;
-      while (y < H && start[y * W + x] !== AIR) y++;
-      if (y >= H) continue;
-      if (x === 38) seepY = y;
-      const top = Math.trunc(surf[x]) + 3, from = base.slice((top * W + x) * 3, (top * W + x) * 3 + 3);
-      for (let r = top; r < y; r++) {
-        const c = (r * W + x) * 3;
-        base[c] = from[0] * 0.4 + 60 * 0.6;
-        base[c + 1] = from[1] * 0.4 + 130 * 0.6;
-        base[c + 2] = from[2] * 0.4 + 170 * 0.6;
-      }
-    }
-
-    /* Moss on the cave's far wall. */
-    for (let y = 23; y < 45; y++) {
-      for (let x = 119; x < 158; x++) {
-        const i = y * W + x;
-        if (start[i] !== AIR) continue;
-        const touch = start[i - 1] === ROCK || start[i + 1] === ROCK || start[i - W] === ROCK || start[i + W] === ROCK;
-        if (touch && rng() < 0.6) start[i] = MOSS;
-      }
-    }
-    yield;
-
-    /* Ore on the way to the burrow. */
-    const ore = yield* noise(W, H, 1.6, 1.6, rng);
-    const ORES = ['b8a47e', '9a4a40', '4a8a80', 'a8a0b8'].map(rgb);
-    for (let n = 0; n < 26; n++) {
-      const cx = 166 + Math.floor(rng() * 134), cy = 22 + Math.floor(rng() * 84), r = 2 + Math.floor(rng() * 4);
-      const c = ORES[Math.floor(rng() * 4)], reach = Math.ceil(r * 1.6);
-      /* This lump comes out clipped square by its own reach, in plain view. Its dice are still thrown. */
-      if (cx === 261 && cy === 51) continue;
-      for (let y = Math.max(0, cy - reach); y <= cy + reach; y++) {
-        for (let x = Math.max(0, cx - reach); x <= cx + reach; x++) {
-          const i = y * W + x, dx = x - cx, dy = y - cy;
-          if (start[i] !== ROCK || Math.sqrt(dx * dx + dy * dy) / r + 1.2 * (ore[i] - 0.5) >= 1) continue;
-          base[i * 3] = c[0] * fine[i]; base[i * 3 + 1] = c[1] * fine[i]; base[i * 3 + 2] = c[2] * fine[i];
-        }
-      }
-    }
-    yield;
-
-    /* Kesh's burrow: a glass box, split by a pane into a tank of hot brine above and a chamber below. */
-    const roomX0 = BX + 60, roomX1 = BX + 132, roomY0 = BY + 10, roomY1 = BY + 54;
-    for (let y = BY + 8; y <= BY + 56; y++) {
-      for (let x = BX + 58; x <= BX + 134; x++) start[y * W + x] = GLASS;
-    }
-    for (let y = roomY0; y <= BY + 22; y++) {
-      for (let x = roomX0; x <= roomX1; x++) start[y * W + x] = HOT;
-    }
-    for (let y = BY + 25; y <= roomY1; y++) {
-      for (let x = roomX0; x <= roomX1; x++) start[y * W + x] = AIR;
-    }
-    const plug = [];
-    for (let y = BY + 23; y <= BY + 24; y++) {
-      for (let x = roomX0; x <= BX + 73; x++) { start[y * W + x] = PLUG; plug.push(y * W + x); }
-    }
-    /* Oru's tunnel, up to the wall. */
-    const rough = yield* noise(W, 1, 2, 0, rng);
-    for (let x = BX - 80; x < BX + 58; x++) {
-      for (let y = BY + 47 + Math.trunc(rough[x] * 2) - 1; y < BY + 55; y++) start[y * W + x] = AIR;
-    }
-    /* Red grains, and the moss garden. */
-    for (let y = BY + 25; y <= roomY1; y++) {
-      for (let x = BX + 75; x <= BX + 97; x++) {
-        if (y >= roomY1 - (11 - Math.abs(x - BX - 86)) * 0.9) start[y * W + x] = RED;
-      }
-    }
-    const lawn = yield* noise(W, H, 2, 2, rng);
-    for (let y = BY + 25; y <= roomY1; y++) {
-      for (let x = BX + 110; x <= roomX1; x++) {
-        if (y >= BY + 50 + Math.trunc(lawn[y * W + x] * 3)) start[y * W + x] = MOSS;
-      }
-    }
-    for (let y = BY + 34; y <= roomY1; y++) {
-      for (let x = BX + 130; x <= roomX1; x++) if (rng() < 0.7) start[y * W + x] = MOSS;
-    }
-    /* The ledge Kesh sleeps on. */
-    for (let y = BY + KESH_Y + 1; y <= BY + KESH_Y + 2; y++) {
-      for (let x = BX + 114; x <= roomX1; x++) start[y * W + x] = GLASS;
-    }
-    /* The strain, already at the wall. */
-    for (let y = BY + 47; y <= BY + 54; y++) {
-      for (let x = BX + 53; x <= BX + 57; x++) start[y * W + x] = STRAIN;
-    }
-    yield;
-
-    /* What shows behind empty cells: dim rock, the dark room, and the sky. */
-    const band = yield* noise(W, H, 8, 8, rng);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x, c = i * 3;
-        if (y < surf[x]) {
-          const t = clamp(y / 16, 0, 1);
-          const sway = 0.92 + 0.16 * Math.sin(y * 1.3 + 2.5 * band[i]);
-          const k = sway * (0.75 + 0.25 * (1 - clamp((x - 90) / 70, 0, 1)));
-          bg[c] = (22 + 90 * t) * k; bg[c + 1] = (12 + 60 * t) * k; bg[c + 2] = (58 + 110 * t) * k;
-        } else if (x >= roomX0 && x <= roomX1 && y >= roomY0 && y <= roomY1) {
-          bg[c] = 16; bg[c + 1] = 18; bg[c + 2] = 28;
-        } else {
-          bg[c] = base[c] * 0.2; bg[c + 1] = base[c + 1] * 0.2; bg[c + 2] = base[c + 2] * 0.2;
-        }
-      }
-    }
-    yield;
-    return { start, shade, amb, base, bg, seepY, plug };
-  }
-
-  /* The planet in cross-section, sky to molten deep, for the fall. */
-  function* buildColumn() {
-    const rng = dice(COLUMN_SEED), n = CW * CH;
-    const img = new Float32Array(n * 3);
-    const wobble = yield* noise(CW, CH, 14, 10, rng);
-    const fine = yield* fineNoise(CW, CH, rng);
-    for (let i = 0; i < n; i++) fine[i] = 0.8 + 0.4 * fine[i];
-    yield;
-    const strata = new Float32Array(400);
-    for (let k = 0; k < 400; k++) strata[k] = rng();
-    const caverns = yield* noise(CW, CH, 9, 5, rng);
-    const LENS = rgb('2f8fb0');
-    for (let y = 0; y < CH; y++) {
-      for (let x = 0; x < CW; x++) {
-        const i = y * CW + x, wob = y + 16 * (wobble[i] - 0.5);
-        const a = (x - COL_MID - 96) / 46, b = (y - 480) / 18;
-        let c = LENS, k = fine[i];
-        if (a * a + b * b >= 1) {
-          c = bandOf(COL_BANDS, wob);
-          k = fine[i] * (0.72 + 0.56 * strata[clamp(Math.trunc((wob + 20) / 5), 0, 399)]);
-          k *= 1 - 0.4 * clamp(y / 980, 0, 1);
-          if (caverns[i] > 0.63 && wob > 70) k *= 0.22;
-        }
-        img[i * 3] = c[0] * k; img[i * 3 + 1] = c[1] * k; img[i * 3 + 2] = c[2] * k;
-      }
-      if (y % 128 === 127) yield;
-    }
-    const ore = yield* noise(CW, CH, 1.6, 1.6, rng);
-    const ORES = ['b8a47e', '9a4a40', '4a8a80', 'a8a0b8', '6a8a50'].map(rgb);
-    for (let m = 0; m < 140; m++) {
-      const cx = Math.floor(rng() * CW), cy = 90 + Math.floor(rng() * 870), r = 2 + Math.floor(rng() * 5);
-      const c = ORES[Math.floor(rng() * 5)], reach = Math.ceil(r * 1.6);
-      for (let y = cy - reach; y <= cy + reach; y++) {
-        for (let x = Math.max(0, cx - reach); x <= Math.min(CW - 1, cx + reach); x++) {
-          const i = y * CW + x, dx = x - cx, dy = y - cy;
-          if (Math.sqrt(dx * dx + dy * dy) / r + 1.2 * (ore[i] - 0.5) >= 1) continue;
-          const k = 0.8 * fine[i];
-          img[i * 3] = c[0] * k; img[i * 3 + 1] = c[1] * k; img[i * 3 + 2] = c[2] * k;
-        }
-      }
-    }
-    yield;
-    const out = new Uint8ClampedArray(n * 3);
-    for (let y = 0; y < CH; y++) {
-      const glow = clamp((y - 880) / 170, 0, 1), t = clamp(y / 60, 0, 1), sway = 0.92 + 0.16 * Math.sin(y * 0.9);
-      for (let x = 0; x < CW; x++) {
-        const i = y * CW + x, c = i * 3;
-        if (y + 16 * (wobble[i] - 0.5) < 60) {
-          out[c] = (22 + 90 * t) * sway; out[c + 1] = (12 + 60 * t) * sway; out[c + 2] = (58 + 110 * t) * sway;
-        } else {
-          out[c] = img[c] + glow * 190; out[c + 1] = img[c + 1] + glow * 55; out[c + 2] = img[c + 2] + glow * 10;
-        }
-      }
-      if (y % 128 === 127) yield;
-    }
-    return out;
-  }
-
-  /* The word SILT as a list of grains, each knowing its colour. */
   function buildLogo(mask) {
     const xs = [], ys = [];
     mask.rows.split(' ').forEach((row, r) => {
@@ -516,7 +283,7 @@
     const n = xs.length, y0 = ys[0], y1 = ys[n - 1];
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      const k = (ys[i] - y0) / (y1 - y0);
+      const k = 1 - (ys[i] - y0) / (y1 - y0);
       for (let s = 0; s + 1 < LOGO_STOPS.length; s++) {
         const a = LOGO_STOPS[s], b = LOGO_STOPS[s + 1];
         if (k < a[0] || k > b[0]) continue;
@@ -527,285 +294,1006 @@
     }
     return {
       n, col, xs: Int16Array.from(xs), ys: Int16Array.from(ys),
-      order: new Uint16Array(n), begin: new Float32Array(n), tint: new Float32Array(n)
+      order: new Uint16Array(n), begin: new Float32Array(n), tint: new Float32Array(n), sway: new Float32Array(n)
     };
   }
 
-  /* What the picture shows at this moment. */
-  function modeAt(t) {
-    if (t < T_FALL) return 'none';
-    if (t < T_WORLD) return 'fall';
-    if (t < T_HIST || (t >= T_WHISPER && t < T_EXIT)) return 'world';
-    return t >= T_LOGO ? 'logo' : 'none';
+  /* ---- The valley ---- */
+
+  /* Everything that never changes during a play, the materials as they start, and what each grain becomes and on
+     which day. It yields between the heavy parts, so it can be spread over several tasks. */
+  function* buildWorld() {
+    const M0 = new Uint8Array(N), SH = new Uint8Array(N), MO0 = new Uint8Array(N);
+    const FIN = new Uint8Array(N).fill(KEEP), FLF = new Uint8Array(N);
+    const BM = new Uint8Array(N).fill(NEVER), BF = new Uint8Array(N).fill(NEVER);
+    const surf = new Int16Array(W);
+    const rng = dice(WORLD_SEED);
+
+    function inWindow(x, y) { return x >= WX0 && x < WX1 && y >= WY0 && y < WY1; }
+    function at(x, y) { return y * W + x; }
+    function ok(x, y) { return x >= 0 && x < W && y >= 0 && y < H; }
+
+    /* The surface. Inside the window it is exact; outside it rolls a little. */
+    for (let x = 0; x < W; x++) {
+      let y;
+      if (x >= WX0 && x < WX1) y = PY + lerpAt(PATCH, x - PX, false);
+      else y = lerpAt(LAND, x, true) + 4 * (fbm(x / 53, 0.5, 11) - 0.5) + 1.5 * (vnoise(x / 11, 3.5, 12) - 0.5);
+      surf[x] = Math.floor(y);
+    }
+    yield;
+
+    /* Strata, wavering with depth below the surface, and the rock shoulder at the patch's left. */
+    for (let y = 0; y < H; y++) {
+      if ((y & 63) === 0) yield;
+      for (let x = 0; x < W; x++) {
+        const i = at(x, y), s = surf[x];
+        if (y < s) continue;
+        const d = y - s, px = x - PX;
+        const wob = 8 * (vnoise(x / 31, y / 13, 3) - 0.5) + 6 * (vnoise(x / 97, 1.5, 4) - 0.5);
+        const e = d + (d > 6 ? wob : 0);
+        const rock = px <= 38 && px >= -70 ? lerpAt(ROCK, px, true) + 4 * (vnoise(x / 6, y / 5, 21) - 0.5) : 0;
+        let m;
+        if (d < rock) m = STONE;
+        else if (e < 5) m = px >= 104 && px <= 142 && d < 6 ? FINE : SILT;
+        else if (e < 15) m = SOIL;
+        else if (e < 32) m = STRATA_A;
+        else if (e < 56) m = STRATA_B;
+        else if (e < 92) m = STRATA_C;
+        else m = STONE;
+        M0[i] = m;
+        /* Fine banding inside each layer, and a little grain to grain. Deep stone lies in beds. */
+        const band = vnoise(x / 23, y / 2.2, 5), jit = hash(x, y, 6);
+        let sh = Math.floor(clamp(band * 2.6 + jit * 1.6 - 0.3, 0, 3.99));
+        if (m === STONE && d > 92) sh = ((y + Math.floor(5 * vnoise(x / 40, y / 40, 8))) % 11 === 0) ? 0 : sh;
+        SH[i] = sh | (Math.floor(jit * 64) << 2);
+      }
+    }
+    yield;
+
+    /* The spring: a pocket of water in the shoulder, plugged at the face. */
+    for (let py = 19; py <= 27; py++) {
+      for (let px = 25; px <= 38; px++) {
+        const a = (px - 31) / 4.6, b = (py - 23) / 3.4;
+        if (a * a + b * b < 1 && px <= 35) M0[at(PX + px, PY + py)] = WATER;
+      }
+    }
+    for (let px = 36; px <= 38; px++) {
+      M0[at(PX + px, PY + 23)] = STONE;
+      M0[at(PX + px, PY + 26)] = STONE;
+    }
+    M0[at(PX + 35, PY + 24)] = WATER;
+    M0[at(PX + 35, PY + 25)] = WATER;
+    PLUG.forEach((p) => { M0[at(PX + p[0], PY + p[1])] = SILT; M0[at(PX + p[0], PY + p[1] + 1)] = SILT; });
+
+    function blob(cx, cy, rx, ry, salt, fn) {
+      for (let y = Math.floor(cy - ry - 3); y <= cy + ry + 3; y++) {
+        for (let x = Math.floor(cx - rx - 3); x <= cx + rx + 3; x++) {
+          if (!ok(x, y) || inWindow(x, y)) continue;
+          const a = (x - cx) / rx, b = (y - cy) / ry;
+          if (a * a + b * b + 0.5 * (vnoise(x / 6, y / 4, salt) - 0.5) < 1) fn(at(x, y), x, y);
+        }
+      }
+    }
+    function carve(pts, r, fn) {
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const a = pts[k], b = pts[k + 1], len = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+        for (let s = 0; s <= len; s++) {
+          const u = s / len, cx = a[0] + (b[0] - a[0]) * u, cy = a[1] + (b[1] - a[1]) * u + 2 * (vnoise(s / 9, k, 31) - 0.5);
+          for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+            for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+              const x = Math.round(cx + dx), y = Math.round(cy + dy);
+              if (!ok(x, y) || inWindow(x, y) || dx * dx + dy * dy > r * r + 0.5) continue;
+              fn(at(x, y), x, y, (k + u) / (pts.length - 1));
+            }
+          }
+        }
+      }
+    }
+
+    /* Under the hills: a lake in the rock, the vein that feeds the spring, and caves where fungi glow. */
+    blob(440, 252, 104, 15, 41, (i, x, y) => { M0[i] = y >= 248 ? WATER : AIR; });
+    carve([[540, 256], [600, 236], [650, 214], [684, 204]], 0.8, (i) => { M0[i] = WATER; });
+    carve([[520, 262], [566, 300], [600, 322]], 0.7, (i) => { M0[i] = WATER; });
+    /* Thin veins of water through the deep rock. */
+    [[[700, 360], [780, 400], [860, 470]], [[1000, 300], [1060, 350], [1150, 360]], [[1180, 300], [1230, 340], [1320, 470]],
+      [[260, 300], [300, 420], [380, 500]], [[1450, 260], [1470, 380], [1500, 470]]].forEach((v) => { carve(v, 0.6, (i) => { if (M0[i] !== AIR) M0[i] = WATER; }); });
+    CAVES.forEach((c, k) => { blob(c[0], c[1], c[2], c[3], 42 + k, (i) => { M0[i] = AIR; }); });
+    yield;
+    /* Cave floors drift with sand; pools gather at the low ends; fungi stand on the floors and hang from ceilings. */
+    function floors(x0, x1, y0, y1, fungus, pool) {
+      for (let x = x0; x <= x1; x++) {
+        let y = y1;
+        while (y > y0 && M0[at(x, y)] !== AIR) y--;
+        if (M0[at(x, y)] !== AIR) continue;
+        const depth = 1 + Math.floor(2 * vnoise(x / 5, y0, 51));
+        for (let k = 0; k < depth; k++) if (M0[at(x, y - k)] === AIR) M0[at(x, y - k)] = SAND;
+        if (pool && x > pool[0] && x < pool[1]) M0[at(x, y - depth)] = WATER;
+        if (hash(x, y, 52) < fungus) {
+          const tall = 1 + Math.floor(hash(x, y, 53) * 3);
+          for (let k = 0; k < tall; k++) if (M0[at(x, y - depth - k)] === AIR) M0[at(x, y - depth - k)] = FUNGUS;
+        }
+        let top = y0;
+        while (top < y && M0[at(x, top)] !== AIR) top++;
+        if (top < y && hash(x, top, 54) < fungus * 0.35) M0[at(x, top)] = FUNGUS;
+      }
+    }
+    CAVES.forEach((c, k) => {
+      floors(c[0] - c[2] - 3, c[0] + c[2] + 3, c[1] - c[3] - 3, c[1] + c[3] + 3, 0.09, k === 0 ? [c[0] - 30, c[0] - 8] : null);
+    });
+    /* A geode, for whoever digs that far. */
+    blob(1430, 470, 6, 5, 46, (i, x, y) => {
+      const a = (x - 1430) / 6, b = (y - 470) / 5;
+      M0[i] = a * a + b * b < 0.35 ? AIR : CRYSTAL;
+      SH[i] = (SH[i] & 0xfc) | Math.floor(hash(x, y, 47) * 4);
+    });
+    /* Pebbles and boulders in the soil and strata. */
+    for (let k = 0; k < 640; k++) {
+      const cx = Math.floor(rng() * W), cy = surf[clamp(cx, 0, W - 1)] + 8 + Math.floor(rng() * 300);
+      const r = 1 + rng() * (rng() < 0.15 ? 4.5 : 1.6);
+      blob(cx, cy, r, r * 0.8, 48, (i, x, y) => {
+        if (M0[i] === AIR || M0[i] === WATER || M0[i] === FUNGUS || M0[i] === SAND) return;
+        M0[i] = STONE;
+        SH[i] = (SH[i] & 0xfc) | (y < cy ? 3 : y > cy + r * 0.4 ? 0 : 2);
+      });
+    }
+    /* The valley's lake. */
+    for (let x = LAKE_X0; x <= LAKE_X1; x++) {
+      const depth = Math.round(16 * Math.sqrt(Math.max(0, Math.sin(Math.PI * (x - LAKE_X0) / (LAKE_X1 - LAKE_X0)))));
+      for (let y = Math.min(surf[x], LAKE_Y); y < LAKE_Y; y++) M0[at(x, y)] = AIR;
+      for (let y = LAKE_Y; y < LAKE_Y + depth; y++) M0[at(x, y)] = WATER;
+      for (let y = LAKE_Y + depth; y < LAKE_Y + depth + 3; y++) if (M0[at(x, y)] !== WATER) M0[at(x, y)] = SAND;
+      surf[x] = LAKE_Y;
+    }
+    /* Damp around water under the ground. */
+    for (let y = 200; y < H - 3; y++) {
+      for (let x = 260; x < 1500; x++) {
+        if (M0[at(x, y)] !== WATER || inWindow(x, y)) continue;
+        for (let d = -3; d <= 3; d++) if (SOAKS[M0[at(x, y + d)]]) MO0[at(x, y + d)] = 200;
+      }
+    }
+    yield;
+
+    /* ---- What grows and gets built, and on which day ---- */
+
+    function mat(x, y, m, day, sh) {
+      if (!ok(x, y)) return;
+      const i = at(x, y);
+      if (BM[i] !== NEVER && BM[i] <= day) return;
+      FIN[i] = m;
+      BM[i] = clamp(Math.round(day), 2, 120);
+      if (sh !== undefined) SH[i] = (SH[i] & 0xfc) | sh;
+    }
+    function flo(x, y, f, day, sh) {
+      if (!ok(x, y)) return;
+      const i = at(x, y);
+      if (BF[i] !== NEVER && BF[i] <= day) return;
+      FLF[i] = f;
+      BF[i] = clamp(Math.round(day), 2, 120);
+      if (sh !== undefined) SH[i] = (SH[i] & 0xfc) | sh;
+    }
+    function now(i) { return BM[i] !== NEVER ? FIN[i] : M0[i]; }
+    function solid(x, y) { const m = now(at(x, y)); return m !== AIR && m !== WATER; }
+    /* The surface once everything is built. */
+    function topAt(x) {
+      let y = 0;
+      while (y < H - 1 && now(at(x, y)) === AIR) y++;
+      return y;
+    }
+    function groundAt(x) {
+      let y = 0;
+      while (y < H - 1 && !solid(x, y)) y++;
+      return y;
+    }
+
+    /* Terraces down the slope below the patch: a clay lip, the soil levelled behind it, and a pond. Two grow crops. */
+    TERRACES.forEach((tr) => {
+      const x0 = tr[0], x1 = tr[1], day = tr[2], crops = tr[3], L = surf[x0];
+      for (let x = x0; x < x1; x++) {
+        const lip = x >= x1 - 4;
+        for (let y = L - 4; y < surf[x]; y++) {
+          if (lip) mat(x, y, BRICK, day, (x + (y % 2) * 2) % 4 === 0 ? 0 : 2);
+          else if (y >= L || (crops ? y >= L - 1 : x < x0 + 10)) mat(x, y, SOIL, day, 2);
+          else if (!crops) mat(x, y, WATER, day + 1, 1);
+        }
+        if (crops && !lip && x > x0 + 2 && x % 3 !== 0) {
+          const h = 3 + Math.floor(hash(x, day, 61) * 4);
+          for (let k = 1; k <= h; k++) flo(x, L - 1 - k, CROP, day + 2 + k * 0.5, Math.min(3, k));
+        }
+      }
+      /* The overflow, falling down the face of the lip. */
+      for (let y = L - 4; y < surf[x1]; y++) { mat(x1, y, WATER, day + 1, 2); mat(x1 + 1, y, WATER, day + 1, 3); }
+    });
+    yield;
+
+    /* How soon a place gets tended: near the patch first, then outward. The far edges never. */
+    function dayFor(x, spread) {
+      if (x < 236 || x > 1452) return NEVER;
+      const d = Math.abs(x - (PX + 80));
+      const k = Math.pow(clamp((d - 60) / 660, 0, 1), 1.1);
+      return clamp(Math.round(2 + 118 * k + (spread || 6) * (hash(x, 9, 62) - 0.5)), 2, 120);
+    }
+
+    /* Roots: pale threads down through the earth. */
+    function root(x, y, len, day, wander) {
+      for (let k = 0; k < len; k++) {
+        if (!ok(x, y) || !EARTH[now(at(x, y))] && now(at(x, y)) !== STRATA_B && now(at(x, y)) !== STRATA_C) break;
+        flo(x, y, ROOT, day + k * 0.25, 1 + Math.floor(hash(x, y, 63) * 3));
+        const r = hash(x, y, 64 + k);
+        x += r < wander ? -1 : r > 1 - wander ? 1 : 0;
+        y += 1;
+        if (k > 6 && hash(x, y, 65) < 0.04 && len > 20) root(x, y, (len - k) >> 1, day + k * 0.25, wander);
+      }
+    }
+    /* A tree: a trunk, a few branches and round clusters of leaves. Some blossom. */
+    function tree(bx, h, day, opts) {
+      const by = groundAt(bx);
+      if (by >= H - 2) return;
+      const base = opts.w || Math.max(2, Math.round(h / 14)), top = by - h;
+      for (let y = by - 1; y >= top + h * 0.25; y--) {
+        const k = (by - y) / h, w = Math.max(1, Math.round(base * (1 - k * 0.6)));
+        for (let i = 0; i < w; i++) flo(bx - (w >> 1) + i, y, STEM, day + 5 * k, i === 0 ? 3 : 1);
+      }
+      const r = opts.r || Math.max(4, h / 3.3), clusters = opts.clusters || Math.max(3, Math.round(h / 8));
+      for (let c = 0; c < clusters; c++) {
+        const cx = bx + (c === 0 ? 0 : (hash(bx, c, 66) - 0.5) * r * 2.2), cy = top + r * 0.9 + (c === 0 ? -r * 0.3 : hash(bx, c, 67) * r * 0.9);
+        const rr = r * (c === 0 ? 1 : 0.55 + 0.35 * hash(bx, c, 68));
+        for (let k = 0; c > 0 && k <= 6; k++) flo(Math.round(bx + (cx - bx) * k / 6), Math.round(by - h * 0.45 + (cy - by + h * 0.45) * k / 6), STEM, day + 3, 1);
+        for (let y = Math.floor(cy - rr - 1); y <= cy + rr + 1; y++) {
+          for (let x = Math.floor(cx - rr - 1); x <= cx + rr + 1; x++) {
+            const a = (x - cx) / rr, b = (y - cy) / (rr * 0.85);
+            if (a * a + b * b > 0.82 + 0.36 * vnoise(x / 3, y / 3, 69)) continue;
+            if (!ok(x, y) || solid(x, y)) continue;
+            const light = 0.55 - 0.35 * a - 0.45 * b + (vnoise(x / 2.5, y / 2.5, 70) - 0.5) * 0.6;
+            const blossom = opts.blossom && vnoise(x / 2.4, y / 2.4, 71) > 0.64;
+            flo(x, y, blossom ? BLOSSOM : LEAF, day + 3 + 6 * (a * a + b * b), Math.floor(clamp(light * 4, 0, 3.99)));
+          }
+        }
+      }
+      const roots = 3 + Math.round(h / 12);
+      for (let k = 0; k < roots; k++) {
+        root(bx - base + Math.floor(hash(bx, k, 72) * base * 2 + 1), by + 1, Math.round(h * (0.6 + 0.9 * hash(bx, k, 73))), day + 2, 0.3);
+      }
+    }
+    /* A clay house with lit windows, a door, a roof thatched with moss and a chimney. */
+    function house(x0, day, w, ht) {
+      w = w || 22; ht = ht || 11;
+      let floor = H;
+      for (let x = x0 - 1; x <= x0 + w; x++) floor = Math.min(floor, groundAt(x));
+      for (let x = x0 - 1; x <= x0 + w; x++) { const g = groundAt(x); for (let y = floor; y <= g; y++) mat(x, y, STONE, day, 1); }
+      for (let y = floor - ht; y < floor; y++) {
+        for (let x = x0; x < x0 + w; x++) {
+          const row = floor - y;
+          const win = row >= ht - 4 && row <= ht - 2 && ((x - x0) % 8 === 2 || (x - x0) % 8 === 3 || (x - x0) % 8 === 4) && x < x0 + w - 6;
+          const door = x >= x0 + w - 5 && x <= x0 + w - 3 && row <= 6;
+          if (win) mat(x, y, LAMP, day, row === ht - 2 ? 2 : 1);
+          else if (door) mat(x, y, WOOD, day, 1);
+          else mat(x, y, BRICK, day, (x + (y % 2) * 2) % 4 === 0 ? 0 : 2 + (hash(x, y, 74) < 0.3 ? 1 : 0));
+        }
+      }
+      const pitch = Math.ceil((w + 4) / 2);
+      for (let r = 0; r < pitch; r++) {
+        const y = floor - ht - 1 - Math.floor(r * 0.75), x0r = x0 - 2 + r, x1r = x0 + w + 1 - r;
+        if (x1r < x0r) break;
+        for (let x = x0r; x <= x1r; x++) {
+          if (x === x0r || x === x1r) mat(x, y, WOOD, day, 0);
+          else flo(x, y, BUSH, day + 2, 1 + Math.floor(vnoise(x / 2, y / 2, 75) * 3));
+          if (r === 0) mat(x, y, WOOD, day, 1);
+        }
+      }
+      for (let y = floor - ht - 1 - Math.floor(pitch * 0.5); y < floor - ht; y++) { mat(x0 + w - 5, y, BRICK, day, 1); mat(x0 + w - 4, y, BRICK, day, 2); }
+    }
+    function lantern(x, day) {
+      const y = groundAt(x);
+      for (let k = 1; k <= 4; k++) mat(x, y - k, WOOD, day, 1);
+      mat(x, y - 5, LAMP, day, 3);
+    }
+    function tower(x0, day) {
+      const base = groundAt(x0 + 5);
+      for (let x = x0 - 1; x < x0 + 11; x++) { const g = groundAt(x); for (let y = base; y <= g; y++) mat(x, y, STONE, day, 1); }
+      for (let y = base - 52; y < base; y++) {
+        for (let x = x0; x < x0 + 10; x++) {
+          const win = (base - y) % 12 === 6 && x >= x0 + 4 && x <= x0 + 5;
+          mat(x, y, win ? LAMP : BRICK, day, win ? 2 : (y % 3 === 0 || x === x0) ? 0 : 2);
+        }
+      }
+      for (let x = x0 - 2; x < x0 + 12; x++) mat(x, base - 53, WOOD, day, 1);
+      for (let y = base - 58; y < base - 53; y++) for (let x = x0 + 3; x < x0 + 7; x++) mat(x, y, LAMP, day, y === base - 58 ? 3 : 2);
+    }
+
+    /* Meadows: grass wherever a place has been tended, flowers in it, a bush here and there, roots below. */
+    for (let x = 236; x <= 1452; x++) {
+      const day = dayFor(x, 8);
+      if (day === NEVER) continue;
+      if (inWindow(x, surf[x] - 1)) continue;
+      const y = topAt(x);
+      if (y >= H - 1 || now(at(x, y)) === WATER) continue;
+      const tall = 1 + Math.floor(hash(x, 3, 77) * 3.4);
+      for (let k = 1; k <= tall; k++) flo(x, y - k, GRASS, day + k * 0.6, k === tall ? 3 : 1 + (k & 1));
+      if (hash(x, 4, 78) < 0.08) flo(x, y - tall - 1, hash(x, 5, 79) < 0.2 ? BLOSSOM : FLOWER, day + 5, 1 + Math.floor(hash(x, 6, 80) * 2));
+      if (hash(x, 7, 81) < 0.4) root(x, y + 1, 4 + Math.floor(hash(x, 8, 82) * 18), day + 3, 0.25);
+      if (hash(x, 10, 83) < 0.035) {
+        const w = 3 + Math.floor(hash(x, 11, 84) * 5);
+        for (let dx = -w; dx <= w; dx++) {
+          const yy = topAt(x + dx), hgt = Math.round((w - Math.abs(dx)) * 0.9) + 1;
+          if (now(at(x + dx, yy)) === WATER) continue;
+          for (let k = 1; k <= hgt; k++) flo(x + dx, yy - k, BUSH, day + 6, Math.floor(clamp(3 - k * 0.6 + hash(x + dx, k, 85), 0, 3.99)));
+        }
+      }
+    }
+    /* Reeds along the terrace ponds and the lake. */
+    for (let x = 912; x <= LAKE_X1 + 4; x++) {
+      const y = topAt(x);
+      if (now(at(x, y)) !== WATER || hash(x, 12, 86) > 0.32) continue;
+      let bed = y;
+      while (bed < H - 1 && now(at(x, bed)) === WATER) bed++;
+      if (bed - y > 7) continue;
+      const day = Math.max(dayFor(x, 6) + 3, x > LAKE_X0 ? 30 : 4);
+      const h = bed - y + 3 + Math.floor(hash(x, 13, 87) * 5);
+      for (let k = 1; k <= h; k++) flo(x, bed - k, REED, day + k * 0.4, k === h ? 3 : 1 + (k & 1));
+    }
+    yield;
+
+    /* Trees: a young grove near the patch, groves along the terraces and the lake, a forest on the high ground. */
+    TREES.forEach((tr) => { tree(tr[0], tr[1], tr[2], tr[3] || {}); });
+    yield;
+
+    /* Houses, a tower, a bridge, lanterns along the way. */
+    HOUSES.forEach((h) => { house(h[0], h[1], h[2], h[3]); });
+    tower(1470, 97);
+    for (let x = 1214; x <= 1290; x++) {
+      const deck = Math.round(LAKE_Y - 4 - 8 * Math.sin(Math.PI * (x - 1214) / 76));
+      mat(x, deck, WOOD, 61, 1);
+      mat(x, deck + 1, WOOD, 61, 0);
+      if (x % 5 === 0) mat(x, deck - 1, WOOD, 61, 2);
+      if (x === 1214 || x === 1290 || x % 19 === 0) for (let y = deck + 2; y < LAKE_Y + 14; y++) mat(x, y, WOOD, 61, 0);
+    }
+    [[908, 22], [960, 25], [1014, 27], [1060, 30], [1104, 34], [1156, 42], [1208, 61], [1296, 61], [1352, 51], [618, 34],
+      [548, 42], [500, 61], [420, 72], [372, 84], [300, 97], [1406, 72], [1440, 84], [256, 110]].forEach((l) => { lantern(l[0], l[1]); });
+    /* The well, down to the lake in the rock. */
+    {
+      const x0 = 480, y0 = groundAt(x0);
+      for (let y = y0 - 4; y < 250; y++) {
+        mat(x0 - 3, y, BRICK, 42, 1);
+        mat(x0 + 3, y, BRICK, 42, 1);
+        for (let x = x0 - 2; x <= x0 + 2; x++) if (y >= y0) mat(x, y, AIR, 42);
+      }
+      for (let x = x0 - 4; x <= x0 + 4; x++) mat(x, y0 - 9, WOOD, 42, 0);
+      for (let y = y0 - 8; y < y0 - 4; y++) { mat(x0 - 4, y, WOOD, 42, 1); mat(x0 + 4, y, WOOD, 42, 1); }
+    }
+    /* Tunnels, dug a little further each day and lit as they go: from the basin down to the glowing cave, and on, until
+       the caves are joined up. */
+    function tunnel(pts, day0, day1) {
+      carve(pts, 1.6, (i, x, y, u) => { if (M0[i] !== WATER) mat(x, y, AIR, day0 + (day1 - day0) * u); });
+      /* Then a lantern on the floor every so often along it. */
+      let along = 0;
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const a = pts[k], b = pts[k + 1], len = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+        for (let s = 0; s < len; s++, along++) {
+          if (along % 24 !== 12) continue;
+          const x = Math.round(a[0] + (b[0] - a[0]) * s / len);
+          let y = Math.round(a[1] + (b[1] - a[1]) * s / len);
+          while (y < H - 1 && !solid(x, y + 1)) y++;
+          /* Set into the floor: a grain changes only once, and the tunnel has already changed the one above. */
+          if (!inWindow(x, y + 1)) mat(x, y + 1, LAMP, day0 + (day1 - day0) * (k + s / len) / (pts.length - 1) + 2, 2);
+        }
+      }
+    }
+    TUNNELS.forEach((tn) => { tunnel(tn[0], tn[1], tn[2]); });
+    CAVES.forEach((c, k) => {
+      for (let j = 0; j < 4; j++) {
+        const x = Math.round(c[0] + (j - 1.5) * c[2] * 0.45);
+        let y = c[1];
+        while (y < H - 1 && now(at(x, y + 1)) === AIR) y++;
+        mat(x, y, LAMP, CAVE_DAYS[k] + j * 2, 3);
+      }
+    });
+
+    /* Inside the patch, after the film's day: grass where none grew, flowers, a house by the pond, two trees. */
+    for (let x = WX0 + 2; x < WX1 - 2; x++) {
+      if (x - PX < 40) continue;
+      const y = surf[x], day = 2 + Math.floor(hash(x, 14, 88) * 18);
+      const tall = 1 + Math.floor(hash(x, 15, 89) * 3);
+      for (let k = 1; k <= tall; k++) flo(x, y - k, GRASS, day + k, k === tall ? 3 : 1);
+      if (hash(x, 16, 90) < 0.16) flo(x, y - tall - 1, FLOWER, day + 4, 1 + Math.floor(hash(x, 17, 91) * 2));
+    }
+    house(PX + 150, 16, 16, 9);
+    tree(PX + 18, 26, 7, { blossom: true });
+    tree(PX + 92, 30, 12, {});
+    yield;
+
+    /* Fireflies for the long view: where they rise, and from which day. */
+    const flies = [];
+    for (let k = 0; k < 110; k++) {
+      const x = 260 + Math.floor(rng() * 1180), day = dayFor(x, 8);
+      if (day === NEVER) continue;
+      flies.push(x, topAt(x) - 4 - Math.floor(rng() * 24), day + 10, Math.floor(rng() * 1000));
+    }
+    return { M0, SH, MO0, FIN, FLF, BM, BF, surf, flies: Int16Array.from(flies) };
   }
 
-  function makeReel(world, column, seed0) {
-    const start = world.start, shade = world.shade, amb = world.amb, base = world.base, bg = world.bg;
-    const seepY = world.seepY, plug = world.plug;
-    const M = start.slice(), heat = new Float32Array(N), heatTmp = new Float32Array(N);
-    const moving = new Int32Array(W * PHYS_H);
-    const logos = LOGO_MASKS.map(buildLogo);
-    const ashX = new Float32Array(520), ashY = new Float32Array(520);
+  /* ---- The long views ---- */
 
-    let rnd = dice(1), n = 0;
-    let you, oru, parts, poured, scooped, stolen, kill, wormX, worm, heatLeft, poolWarm, paintSeed;
-    let pointerX = -1, pointerY = -1, heldX = 0, heldY = 0, letGo = -1;
-    let hideFrom = W + 1;
+  /* For each zoom, one cell per square of grains: what it shows on the day the film has got to. */
+  function makeGrid(z) {
+    const gw = W / z, gh = H / z, n = gw * gh;
+    return { z, gw, gh, col: new Uint32Array(n), kind: new Uint8Array(n), glow: new Uint8Array(n), sun: new Uint8Array(n),
+      col0: null, kind0: null, glow0: null, sun0: null, mask: new Uint32Array(n), step: 0 };
+  }
+
+  /* What a cell shows. */
+  const K_SKY = 0, K_CAVE = 1, K_WATER = 2, K_TOP = 3, K_LIT = 4, K_GROUND = 5, K_GREEN = 6;
+
+  function makeReel(world, seed0) {
+    const M0 = world.M0, SH = world.SH, MO0 = world.MO0, FIN = world.FIN, FLF = world.FLF, BM = world.BM, BF = world.BF;
+    const surf = world.surf, flies = world.flies, alive = !!M0;
+    const M = alive ? M0.slice() : null, FL = alive ? new Uint8Array(N) : null;
+    const MO = alive ? MO0.slice() : null, WET = alive ? new Uint8Array(N) : null;
+    const moving = new Int32Array(alive ? (WX1 - WX0) * (WY1 - WY0) : 0);
+    const logos = LOGO_MASKS.map(buildLogo);
+    const grids = alive ? { 2: makeGrid(2), 4: makeGrid(4), 8: makeGrid(8) } : {};
+    let floraOut = new Uint32Array(122); /* Grains growing outside the window by each day. */
+
+    let rnd = dice(1), look = dice(2), n = 0;
+    let you, plant, roots, reeds, built, carried, scooped, sown, opened, stepNo, liveGrowing, firstClay, damp;
+    let bees, fireflies, bird;
+
+    /* ---- Resolving a grain on a day ---- */
+
+    function inWin(x, y) { return x >= WX0 && x < WX1 && y >= WY0 && y < WY1; }
+
+    /* The material and what grows in it, for a grain outside the window on day d. */
+    let RM = 0, RF = 0;
+    function resolve(i, d) {
+      RM = BM[i] <= d ? FIN[i] : M0[i];
+      RF = BF[i] <= d ? FLF[i] : 0;
+    }
+    /* The same inside the window, where the live grains come first. */
+    function resolveLive(i, d) {
+      const m = M[i];
+      RM = m;
+      RF = FL[i];
+      if (d <= 1) return;
+      if (BM[i] <= d && (m === AIR || m === M0[i])) RM = FIN[i];
+      if (!RF && BF[i] <= d) {
+        const f = FLF[i];
+        if (f === ROOT ? EARTH[RM] : RM === AIR || RM === WATER) RF = f;
+      }
+    }
+
+    /* The colour of one grain, as CR, CG, CB, with what kind of thing it is, and what light it gives. */
+    let CR = 0, CG = 0, CB = 0, CK = 0, CL = 0, CS = 1;
+    function tone(i, x, y, m, f) {
+      CL = 0;
+      CS = 1;
+      const s = SH[i], k = s & 3, tint = 0.92 + 0.16 * ((s >> 2) / 63);
+      if (f && (m === AIR || m === WATER || (f === ROOT && EARTH[m]))) {
+        const c = (f * 4 + k) * 3;
+        CR = FPAL[c] * tint; CG = FPAL[c + 1] * tint; CB = FPAL[c + 2] * tint;
+        if (m === WATER) { CR = CR * 0.6 + 26; CG = CG * 0.6 + 34; CB = CB * 0.6 + 44; }
+        else if (f === ROOT) { const dk = depthOf(x, y); CR *= dk; CG *= dk; CB *= dk; CS = sunOf(x, y); }
+        CK = K_GREEN;
+        return;
+      }
+      if (m === AIR) {
+        if (y <= surf[x]) { CK = K_SKY; return; }
+        const dk = depthOf(x, y) * 0.6;
+        CR = 34 * dk; CG = 31 * dk; CB = 29 * dk;
+        CK = K_CAVE;
+        CS = 0;
+        return;
+      }
+      const c = (m * 4 + k) * 3;
+      CR = PAL[c] * tint; CG = PAL[c + 1] * tint; CB = PAL[c + 2] * tint;
+      if (m === WATER) {
+        CK = y > 0 && M[i - W] === AIR && y - 1 <= surf[x] ? K_TOP : K_WATER;
+        CS = sunOf(x, y);
+        return;
+      }
+      if (SOAKS[m]) {
+        const wet = 1 - 0.36 * MO[i] / 255;
+        CR *= wet; CG *= wet; CB *= wet * 1.04;
+      }
+      if (GLOWS[m]) { CK = K_LIT; CL = m; return; }
+      const dk = depthOf(x, y);
+      CR *= dk; CG *= dk; CB *= dk;
+      CK = K_GROUND;
+      CS = sunOf(x, y);
+    }
+    /* Deep ground is darker, and the hour of the day reaches only a little way into it. */
+    function depthOf(x, y) { return 1 - 0.4 * clamp((y - surf[x] - 8) / 260, 0, 1); }
+    function sunOf(x, y) { return clamp(1 - (y - surf[x]) / 18, 0, 1); }
+
+    /* One square of z x z grains, down to one colour: what glows wins, then water, then what grows, then what was
+       built, then whatever there is most of. */
+    const CNT = new Uint16Array(64), REP = new Int32Array(64), seen = [];
+    let POOL_I = 0;
+    function pool(z, bx, by, d, live) {
+      const x0 = bx * z, y0 = by * z;
+      let glowI = -1, glowM = 0, best = 0, caves = 0, caveI = -1;
+      seen.length = 0;
+      for (let y = y0; y < y0 + z; y++) {
+        for (let x = x0; x < x0 + z; x++) {
+          const i = y * W + x;
+          if (live && inWin(x, y)) resolveLive(i, d); else resolve(i, d);
+          let code;
+          if (RF && (RM === AIR || RM === WATER || (RF === ROOT && EARTH[RM]))) code = 32 + RF;
+          else code = RM;
+          if (GLOWS[RM] && EMIT[RM * 3] >= best) { best = EMIT[RM * 3]; glowI = i; glowM = RM; }
+          if (code === AIR && y > surf[x]) { caves++; caveI = i; }
+          if (!CNT[code]) { seen.push(code); REP[code] = i; }
+          CNT[code]++;
+        }
+      }
+      let pick = -1;
+      if (glowI >= 0) pick = glowM;
+      else if (CNT[WATER] >= z) pick = WATER;
+      else if (caves >= z) pick = -2;
+      else {
+        const bloom = CNT[32 + FLOWER] + CNT[32 + BLOSSOM];
+        let green = 0, most = 0, mostC = -1;
+        for (let k = 0; k < seen.length; k++) {
+          const c = seen[k];
+          if (c > 32 && c !== 32 + ROOT) { green += CNT[c]; if (CNT[c] > most) { most = CNT[c]; mostC = c; } }
+        }
+        if (bloom >= z) pick = CNT[32 + FLOWER] >= CNT[32 + BLOSSOM] ? 32 + FLOWER : 32 + BLOSSOM;
+        else if (green >= z) pick = mostC;
+        else if (CNT[32 + ROOT] >= z) pick = 32 + ROOT;
+        else if (CNT[BRICK] + CNT[WOOD] >= z) pick = CNT[BRICK] >= CNT[WOOD] ? BRICK : WOOD;
+        else {
+          let m = -1;
+          for (let k = 0; k < seen.length; k++) if (CNT[seen[k]] > m) { m = CNT[seen[k]]; pick = seen[k]; }
+        }
+      }
+      const i = pick === -2 ? caveI : pick === glowM && glowI >= 0 ? glowI : REP[pick], x = i % W, y = (i / W) | 0;
+      POOL_I = i;
+      if (pick === -2) pick = AIR;
+      for (let k = 0; k < seen.length; k++) CNT[seen[k]] = 0;
+      if (pick >= 32) tone(i, x, y, pick === 32 + ROOT ? SOIL : AIR, pick - 32);
+      else tone(i, x, y, pick, 0);
+      if (pick === WATER) {
+        /* Water at the top of the square takes the sky. */
+        const up = y0 > 0 ? y0 * W - W + x0 : -1;
+        if (up >= 0) {
+          if (live && inWin(x0, y0 - 1)) resolveLive(up, d); else resolve(up, d);
+          CK = RM === AIR && !RF && y0 - 1 <= surf[x0] ? K_TOP : K_WATER;
+        }
+      }
+    }
+
+    function poolInto(g, bx, by, d) {
+      pool(g.z, bx, by, d, false);
+      const p = by * g.gw + bx;
+      g.col[p] = (CR > 255 ? 255 : CR & 255) | ((CG > 255 ? 255 : CG & 255) << 8) | ((CB > 255 ? 255 : CB & 255) << 16);
+      g.kind[p] = CK;
+      g.glow[p] = CL;
+      g.sun[p] = CS * 255;
+    }
+
+    /* Each zoom's day-one picture, and which squares change at each later step. */
+    function* prepare() {
+      for (const z of [2, 4, 8]) {
+        const g = grids[z];
+        for (let by = 0; by < g.gh; by++) {
+          for (let bx = 0; bx < g.gw; bx++) poolInto(g, bx, by, 1);
+          if ((by & 15) === 15) yield;
+        }
+        g.col0 = g.col.slice(); g.kind0 = g.kind.slice(); g.glow0 = g.glow.slice(); g.sun0 = g.sun.slice();
+      }
+      const stepOf = new Uint8Array(256);
+      for (let d = 0; d < 256; d++) stepOf[d] = d > 120 ? 0 : stepOfDay(d);
+      const g2 = grids[2], g4 = grids[4], g8 = grids[8];
+      for (let y = 0; y < H; y++) {
+        if ((y & 63) === 63) yield;
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          const b = Math.min(BM[i], BF[i]);
+          if (b === NEVER || b <= 1) continue;
+          const bits = (BM[i] <= 120 ? 1 << stepOf[BM[i]] : 0) | (BF[i] <= 120 ? 1 << stepOf[BF[i]] : 0);
+          g2.mask[(y >> 1) * g2.gw + (x >> 1)] |= bits;
+          g4.mask[(y >> 2) * g4.gw + (x >> 2)] |= bits;
+          g8.mask[(y >> 3) * g8.gw + (x >> 3)] |= bits;
+          if (BF[i] <= 120 && !inWin(x, y)) floraOut[BF[i]]++;
+        }
+      }
+      for (let d = 1; d < floraOut.length; d++) floraOut[d] += floraOut[d - 1];
+    }
+
+    /* Brings a zoom's picture up to a step. Only squares with something dated in between are worked out again. */
+    function advance(g, s) {
+      if (s <= g.step) return;
+      let bits = 0;
+      for (let k = g.step + 1; k <= s; k++) bits |= 1 << k;
+      const d = DAYS[s];
+      for (let p = 0; p < g.mask.length; p++) {
+        if (!(g.mask[p] & bits)) continue;
+        poolInto(g, p % g.gw, (p / g.gw) | 0, d);
+      }
+      g.step = s;
+    }
+
+    /* ---- A play ---- */
 
     function reset(seed) {
       seed = (seed === undefined ? seed0 : seed) >>> 0;
-      M.set(start);
-      heat.fill(0);
+      if (alive) {
+        M.set(M0);
+        MO.set(MO0);
+        for (let y = WY0; y < WY1; y++) { FL.fill(0, y * W + WX0, y * W + WX1); WET.fill(0, y * W + WX0, y * W + WX1); }
+      }
       rnd = dice(seed);
-      n = 0;
-      you = { x: 72, y: 42, seen: false, carry: 0 };
-      oru = { x: 44, pouch: 0 };
-      parts = [];
-      poured = 0; scooped = 0; stolen = 0;
-      kill = false;
-      wormX = 100;
-      worm = [];
-      for (let i = 0; i < 8; i++) worm.push([100 - i, 53]);
-      heatLeft = BX + 58;
-      poolWarm = false;
-      lightFrame = -1;
-      letGo = -1;
-
       /* What differs on screen but can't touch the physics has dice of its own. */
-      const look = dice(seed ^ 0x5bd1e995);
-      paintSeed = (look() * 4294967296) >>> 0;
-      for (let i = 0; i < ashX.length; i++) { ashX[i] = look() * CW; ashY[i] = look() * 60; }
-      /* The word builds from the floor up, with a little disorder. */
+      look = dice(seed ^ 0x5bd1e995);
+      n = 0;
+      you = { x: 44, y: 0, face: 1, pose: 'sit', carry: 0, walk: 0 };
+      plant = null;
+      roots = [];
+      reeds = [];
+      built = 0;
+      carried = 0;
+      scooped = 0;
+      sown = -1;
+      opened = 0;
+      stepNo = 0;
+      liveGrowing = 0;
+      firstClay = -1;
+      damp = 0;
+      bees = [];
+      fireflies = [];
+      bird = null;
+      [2, 4, 8].forEach((z) => {
+        const g = grids[z];
+        if (!g || !g.col0) return;
+        g.col.set(g.col0); g.kind.set(g.kind0); g.glow.set(g.glow0); g.sun.set(g.sun0);
+        g.step = 0;
+      });
+      lightFrame = -1;
       logos.forEach((l) => {
         const key = new Float32Array(l.n);
         for (let i = 0; i < l.n; i++) {
-          key[i] = -(l.ys[i] + look() * 5);
+          key[i] = -(l.ys[i] + look() * 4);
           l.order[i] = i;
-          l.tint[i] = 0.82 + 0.36 * look();
+          l.tint[i] = 0.86 + 0.28 * look();
+          l.sway[i] = look() * 6.283;
         }
         l.order.sort((a, b) => key[a] - key[b]);
-        for (let i = 0; i < l.n; i++) l.begin[l.order[i]] = i / l.n * 1.7 + look() * 0.12;
+        for (let i = 0; i < l.n; i++) l.begin[l.order[i]] = i / l.n * 1.7 + look() * 0.1;
       });
     }
 
-    /* One update of every moving grain in columns x0 to x1, bottom row first, x direction alternating.
-       The list comes first: a grain that only starts moving during the update waits for the next one. */
-    function step(x0, x1) {
-      let count = 0;
-      const forward = n & 1;
-      for (let y = PHYS_H - 1; y >= 0; y--) {
-        const row = y * W;
-        /* The sky holds only ash, so it can run wider than the ground beneath it. */
-        const end = y < 18 && x1 < 300 ? 350 : x1;
-        if (forward) {
-          for (let x = x0; x < end; x++) if (ACTIVE[M[row + x]]) moving[count++] = row + x;
-        } else {
-          for (let x = end - 1; x >= x0; x--) if (ACTIVE[M[row + x]]) moving[count++] = row + x;
-        }
-      }
-      const ymin = (BY + 28) * W; /* The strain only spreads below this row. */
-      for (let k = 0; k < count; k++) {
-        const i = moving[k], c = M[i];
-        if (c === BRINE || c === HOT) {
-          if (c === HOT && kill && i >= ymin && rnd() < 0.003) M[i] = BRINE;
-          const j = i + W;
-          if (OPEN[M[j]]) { M[i] = M[j]; M[j] = c; continue; }
-          const d = rnd() < 0.5 ? 1 : -1;
-          if (OPEN[M[j + d]] && OPEN[M[i + d]]) { M[i] = M[j + d]; M[j + d] = c; continue; }
-          let run = 0;
-          for (let s = 1; s <= 6; s++) {
-            if (OPEN[M[i + d * s]]) run = s;
-            else break;
-          }
-          if (run) { M[i] = M[i + d * run]; M[i + d * run] = c; }
-        } else if (c === SILT || c === CRUST || c === RED || c === NEW || c === DEAD) {
-          if (c === CRUST) {
-            /* Crust touching brine makes something new. */
-            let reacted = false;
-            for (let s = 0; s < 4 && !reacted; s++) {
-              const q = s === 0 ? i + W : s === 1 ? i - W : s === 2 ? i + 1 : i - 1;
-              if (M[q] === BRINE && rnd() < 0.18) {
-                M[i] = NEW;
-                M[q] = rnd() < 0.4 ? NEW : GAS;
-                heat[i] += 4;
-                poolWarm = true;
-                reacted = true;
-              }
-            }
-            if (reacted) continue;
-          }
-          const j = i + W, b = M[j];
-          if (OPEN[b] || ((b === BRINE || b === HOT) && rnd() < 0.55)) { M[i] = b; M[j] = c; continue; }
-          const d = rnd() < 0.5 ? 1 : -1;
-          if (OPEN[M[j + d]] && OPEN[M[i + d]]) { M[i] = M[j + d]; M[j + d] = c; }
-          else if (OPEN[M[j - d]] && OPEN[M[i - d]]) { M[i] = M[j - d]; M[j - d] = c; }
-        } else if (c === STRAIN) {
-          /* It eats glass, dies in hot brine, and starves away from a wall. */
-          let dead = false, near = false;
-          for (let dy = -W; dy <= W; dy += W) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (!dy && !dx) continue;
-              const q = i + dy + dx, v = M[q];
-              if (v === GLASS) {
-                near = true;
-                if (q >= ymin && rnd() < 0.016) M[q] = STRAIN;
-              } else if (v === HOT && rnd() < 0.4) {
-                dead = true;
-              }
-            }
-          }
-          if (dead || (heat[i] > 0.5 && rnd() < 0.25) || (kill && rnd() < 0.012)) M[i] = rnd() < 0.35 ? GAS : DEAD;
-          else if (!near && rnd() < 0.0035) M[i] = AIR;
-        } else if (c === MOSS) {
-          if (rnd() < 0.012) {
-            const s = Math.floor(rnd() * 4), q = i + (s === 0 ? W : s === 1 ? -W : s === 2 ? 1 : -1);
-            if (M[q] === AIR) {
-              const a = M[q + W], b = M[q - W], e = M[q + 1], f = M[q - 1];
-              if (a === ROCK || b === ROCK || e === ROCK || f === ROCK || a === GLASS || e === GLASS || f === GLASS) {
-                M[q] = MOSS;
-              }
-            }
-          }
-          if (kill && M[i + W] === HOT && rnd() < 0.02) M[i] = DEAD;
-        } else if (c === GAS) {
-          if (rnd() < 0.025) M[i] = AIR;
-          else if (i > W) {
-            const q = i - W + Math.floor(rnd() * 3) - 1;
-            if (M[q] === AIR) { M[i] = AIR; M[q] = c; }
-          }
-        } else if (c === ASH) {
-          const r = rnd(), j = i + W;
-          if (M[j] === AIR) {
-            if (r < 0.28) { M[i] = AIR; M[j] = c; }
-            else if (r < 0.5 && i % W > 1 && M[i - 1] === AIR) { M[i] = AIR; M[i - 1] = c; }
-          } else if (r < 0.25) {
-            M[i] = AIR;
-          }
-        }
-      }
+    /* The top of the ground, water included, under a column of the patch. */
+    function groundAt(px) {
+      const x = PX + px;
+      let y = WY0;
+      while (y < WY1 - 1 && M[y * W + x] === AIR) y++;
+      return y - PY;
+    }
+    function soilAt(px) {
+      const x = PX + px;
+      let y = WY0;
+      while (y < WY1 - 1 && (M[y * W + x] === AIR || M[y * W + x] === WATER)) y++;
+      return y - PY;
     }
 
-    /* Heat spreads a little and fades. */
-    function soften(x0, y0, x1, y1) {
-      const A = 0.4987, B = 0.2283, C = 0.0219, D = 0.00044;
-      for (let y = y0; y < y1; y++) {
-        const row = y * W;
-        for (let x = x0; x < x1; x++) {
-          const i = row + x;
-          heatTmp[i] = A * heat[i] + B * (heat[i - 1] + heat[i + 1]) + C * (heat[i - 2] + heat[i + 2]) +
-            D * (heat[i - 3] + heat[i + 3]);
-        }
-      }
-      for (let y = y0; y < y1; y++) {
-        const row = y * W;
-        for (let x = x0; x < x1; x++) {
-          const i = row + x;
-          heat[i] = 0.955 * (A * heatTmp[i] + B * (heatTmp[i - W] + heatTmp[i + W]) +
-            C * (heatTmp[i - 2 * W] + heatTmp[i + 2 * W]) + D * (heatTmp[i - 3 * W] + heatTmp[i + 3 * W]));
-        }
-      }
+    /* The creature on its path. Its feet are on whatever is under its middle, water included: it paddles. */
+    function place(t) {
+      let k = 0;
+      while (k + 1 < PATH.length && t >= PATH[k + 1][0]) k++;
+      const a = PATH[k], b = PATH[k + 1] || a;
+      let x = a[1];
+      if (a[3] === 'walk') x = Math.round(a[1] + (b[1] - a[1]) * clamp((t - a[0]) / (b[0] - a[0]), 0, 1));
+      you.x = x;
+      you.face = a[2];
+      you.pose = a[3];
+      you.walk = a[3] === 'walk' ? Math.floor(t * 8) & 1 : 0;
+      you.y = Math.min(groundAt(x + 1), groundAt(x + 2)) - 1;
     }
 
-    /* Hot brine holds its heat. There are only two places heat can be: the pool and the burrow. */
-    function warm() {
-      for (let y = BY + 10; y <= BY + 55; y++) {
-        const row = y * W;
-        for (let x = BX - 82; x <= BX + 132; x++) {
-          if (M[row + x] !== HOT) continue;
-          if (heat[row + x] < 0.6) heat[row + x] = 0.6;
-          if (x - 6 < heatLeft) heatLeft = x - 6;
-        }
-      }
-      if (poolWarm) soften(16, 36, 80, 66);
-      soften(heatLeft, BY + 3, BX + 140, BY + 60);
-    }
-
-    function moveWorm() {
-      wormX += 0.22;
-      const x = 96 + Math.trunc(Math.abs(wormX % 120 - 60)), y = Math.trunc(55 + 4 * sine(wormX / 7));
-      if (x === worm[0][0] && y === worm[0][1]) return;
-      worm.pop();
-      worm.unshift([x, y]);
-      if (M[y * W + x] === ROCK) M[y * W + x] = AIR;
-    }
-
-    /* Takes the nearest few cells of a material inside a box. */
+    /* Takes the nearest few cells of a material inside a box of the patch. */
     function takeNearest(mat, x0, y0, x1, y1, cx, cy, count) {
       const best = [];
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
-          if (M[y * W + x] !== mat) continue;
+          const i = (PY + y) * W + PX + x;
+          if (M[i] !== mat) continue;
           const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
           let k = best.length;
           while (k > 0 && best[k - 1][0] > d) k--;
           if (k < count) {
-            best.splice(k, 0, [d, y * W + x]);
+            best.splice(k, 0, [d, i]);
             if (best.length > count) best.pop();
           }
         }
       }
-      best.forEach((b) => { M[b[1]] = AIR; });
+      best.forEach((b) => { M[b[1]] = AIR; FL[b[1]] = 0; });
       return best.length;
+    }
+    function setP(px, py, m) { const i = (PY + py) * W + PX + px; M[i] = m; return i; }
+    function getP(px, py) { return M[(PY + py) * W + PX + px]; }
+    /* A grain thrown aside: it lands where it lands. */
+    function toss(px, py) {
+      for (let k = 0; k < 4; k++) if (getP(px, py - k) === AIR) { setP(px, py - k, SILT); return; }
+    }
+
+    /* One update of every moving grain in the window, bottom row first, x direction alternating.
+       The list comes first: a grain that only starts moving during the update waits for the next one. */
+    function step() {
+      let count = 0;
+      const forward = n & 1;
+      for (let y = WY1 - 2; y >= WY0; y--) {
+        const row = y * W;
+        if (forward) {
+          for (let x = WX0 + 1; x < WX1 - 1; x++) if (ACTIVE[M[row + x]]) moving[count++] = row + x;
+        } else {
+          for (let x = WX1 - 2; x > WX0; x--) if (ACTIVE[M[row + x]]) moving[count++] = row + x;
+        }
+      }
+      for (let k = 0; k < count; k++) {
+        const i = moving[k], c = M[i];
+        if (c === WATER) {
+          const x = i % W;
+          /* Off the edges of the window it runs on into ground that isn't simulated. */
+          if (x <= WX0 + 2 || x >= WX1 - 3) { M[i] = AIR; continue; }
+          const j = i + W, b = M[j];
+          if (b === AIR) { M[i] = AIR; M[j] = WATER; continue; }
+          if (MO[j] < SOAK_FULL[b]) {
+            const dry = 1 - MO[j] / SOAK_FULL[b];
+            if (rnd() < SOAK_RATE * dry * dry * dry) { M[i] = AIR; MO[j] += SOAK_STEP; continue; }
+          }
+          const d = rnd() < 0.5 ? 1 : -1;
+          if (M[j + d] === AIR && M[i + d] === AIR) { M[i] = AIR; M[j + d] = WATER; continue; }
+          let run = 0;
+          for (let s = 1; s <= 6; s++) {
+            if (M[i + d * s] === AIR) run = s;
+            else break;
+          }
+          if (run) { M[i] = AIR; M[i + d * run] = WATER; }
+        } else {
+          if (c === FINE) {
+            /* Fine silt under standing water turns to clay. */
+            if (M[i - W] === WATER && M[i - W - W] === WATER && n >= CLAY_FROM) {
+              if (WET[i] < 255 && (n & 1)) WET[i]++;
+              if (WET[i] >= CLAY_AFTER) { M[i] = CLAY; continue; }
+            } else WET[i] = 0;
+          }
+          const j = i + W, b = M[j];
+          if (b === AIR || (b === WATER && rnd() < 0.5)) {
+            M[i] = b; M[j] = c;
+            const mo = MO[i]; MO[i] = MO[j]; MO[j] = mo;
+            if (FL[i] === ROOT) FL[i] = 0;
+            if (FL[j] && FL[j] !== ROOT) FL[j] = 0;
+            continue;
+          }
+          /* Only dry silt slides. Damp silt holds its shape, and clay and seeds only fall. */
+          if ((c !== SILT && c !== FINE) || MO[i] > 90) continue;
+          const d = rnd() < 0.5 ? 1 : -1;
+          let q = -1;
+          if (M[j + d] === AIR && M[i + d] === AIR) q = j + d;
+          else if (M[j - d] === AIR && M[i - d] === AIR) q = j - d;
+          if (q >= 0) {
+            M[i] = AIR; M[q] = c;
+            MO[q] = MO[i]; MO[i] = 0;
+            if (FL[i] === ROOT) FL[i] = 0;
+            if (FL[q] && FL[q] !== ROOT) FL[q] = 0;
+          }
+        }
+      }
+    }
+
+    /* Damp spreads through soil: down most, sideways less, up a little. */
+    function seep() {
+      for (let y = WY0; y < WY1 - 1; y++) {
+        const row = y * W;
+        for (let x = WX0 + 1; x < WX1 - 1; x++) {
+          const i = row + x, m = M[i];
+          if (!SOAKS[m] && m !== SEED) continue;
+          let v = MO[i];
+          if (v < 12) continue;
+          const j = i + W;
+          if ((SOAKS[M[j]] || M[j] === SEED) && MO[j] < v) { const q = (v - MO[j]) >> 5; MO[j] += q; v -= q; }
+          for (let d = -1; d <= 1; d += 2) {
+            const s = i + d;
+            if (SOAKS[M[s]] && MO[s] + 8 < v) { const q = (v - MO[s]) >> 6; MO[s] += q; v -= q; }
+          }
+          const u = i - W;
+          if ((SOAKS[M[u]] || M[u] === SEED) && MO[u] + 40 < v) { const q = (v - MO[u]) >> 6; MO[u] += q; v -= q; }
+          MO[i] = v;
+        }
+      }
+    }
+
+    /* Grass where the ground is damp; taller tufts; flowers on some tips; roots under some of it. */
+    function green(t) {
+      const tries = 90;
+      for (let k = 0; k < tries; k++) {
+        const x = WX0 + 3 + Math.floor(rnd() * (WX1 - WX0 - 6));
+        let y = WY0;
+        while (y < WY1 - 1 && (M[y * W + x] === AIR || M[y * W + x] === WATER)) y++;
+        const s = y * W + x, c = s - W;
+        if (!SOAKS[M[s]] || MO[s] < 100 || M[c - W] === WATER) continue;
+        if (!FL[c]) {
+          const near = (FL[c - 1] === GRASS) + (FL[c + 1] === GRASS) + (FL[c - 1 - W] === GRASS) + (FL[c + 1 - W] === GRASS) +
+            (FL[c - 1 + W] === GRASS) + (FL[c + 1 + W] === GRASS);
+          if (rnd() < (near ? 0.5 : 0.03)) {
+            FL[c] = GRASS;
+            if (rnd() < 0.3 && roots.length < 90) roots.push([x, y + 1, 2 + Math.floor(rnd() * 7)]);
+          }
+          continue;
+        }
+        /* Up the tuft to its top. */
+        let top = c, h = 1;
+        while (FL[top - W] === GRASS || FL[top - W] === FLOWER) { top -= W; h++; }
+        if (FL[top] === FLOWER) continue;
+        const most = 1 + ((x * 7) % 3);
+        if (h < most && M[top - W] === AIR && rnd() < 0.3) FL[top - W] = GRASS;
+        else if (t > 21.5 && h >= 2 && M[top - W] === AIR && ((x * 13) % 5) < 2 && rnd() < 0.08) FL[top - W] = FLOWER;
+      }
+    }
+
+    /* Root tips: down through damp earth, a grain at a time. */
+    function dig() {
+      for (let k = roots.length - 1; k >= 0; k--) {
+        const r = roots[k];
+        if (r[2] <= 0) { roots.splice(k, 1); continue; }
+        const x = r[0], y = r[1];
+        if (y >= WY1 - 1) { roots.splice(k, 1); continue; }
+        const i = y * W + x;
+        if (EARTH[M[i]] && !FL[i]) FL[i] = ROOT;
+        const d = rnd() < 0.5 ? -1 : 1, dn = i + W;
+        let nx = x;
+        if (rnd() < 0.3 && EARTH[M[dn + d]] && MO[dn + d] >= MO[dn]) nx = x + d;
+        r[0] = nx; r[1] = y + 1; r[2]--;
+        if (r[3] && rnd() < 0.08 && roots.length < 90) roots.push([nx, y + 1, r[2] >> 1]);
+      }
+    }
+
+    /* The plant from the seed: a stem by a fixed budget, branches, leaves round the tips, blossom late. */
+    function growPlant(t) {
+      const p = plant;
+      const want = Math.min(18, Math.floor((t - p.at) * 0.95));
+      const x0 = PX + p.x;
+      while (p.h < want) {
+        let x = p.top % W;
+        if (p.h >= 6 && rnd() < 0.18) x += rnd() < 0.5 ? -1 : 1;
+        if (Math.abs(x - x0) > 2) x = x0 + (x > x0 ? 2 : -2);
+        const y = ((p.top / W) | 0) - 1, i = y * W + x;
+        p.top = i;
+        FL[i] = STEM;
+        p.h++;
+        if (p.h >= 5 && p.h % 3 === 2) p.tips.push([x, y, rnd() < 0.5 ? -1 : 1, 2 + Math.floor(rnd() * 3)]);
+      }
+      for (let k = 0; k < p.tips.length; k++) {
+        const b = p.tips[k];
+        if (b[3] > 0 && rnd() < 0.2) {
+          b[0] += b[2]; b[1] -= rnd() < 0.6 ? 1 : 0; b[3]--;
+          const i = b[1] * W + b[0];
+          if (!FL[i] && (M[i] === AIR || M[i] === WATER)) FL[i] = STEM;
+        }
+      }
+      /* Leaves round the tips and the top, in a crown that widens as it grows. */
+      for (let k = 0; k < 5; k++) {
+        const anchors = p.tips.length + 1, a = Math.floor(rnd() * anchors);
+        let ax, ay, r;
+        if (a === p.tips.length) { ax = p.top % W; ay = ((p.top / W) | 0) + (p.h >> 3); r = 2 + p.h / 4.5; }
+        else { ax = p.tips[a][0]; ay = p.tips[a][1]; r = 1.5 + p.h / 7; }
+        const dx = Math.round((rnd() * 2 - 1) * r), dy = Math.round((rnd() * 2 - 1) * r * 0.8);
+        if (dx * dx + dy * dy > r * r + 0.5 || p.h < 3) continue;
+        const i = (ay + dy) * W + ax + dx;
+        if (!FL[i] && M[i] === AIR) FL[i] = t > 38 && rnd() < 0.25 ? BLOSSOM : LEAF;
+      }
+    }
+
+    /* Reeds at the pond's shallow edges, once there is a pond. */
+    function sprout(t) {
+      for (let k = 0; k < 6; k++) {
+        const px = 104 + Math.floor(rnd() * 40), x = PX + px;
+        let y = WY0;
+        while (y < WY1 - 1 && M[y * W + x] === AIR) y++;
+        let bed = y;
+        while (bed < WY1 - 1 && M[bed * W + x] === WATER) bed++;
+        const depth = bed - y;
+        if (depth < 1 || depth > 3 || !EARTH[M[bed * W + x]] || reeds.some((r) => Math.abs(r[0] - x) < 3)) continue;
+        if (rnd() < 0.35) reeds.push([x, bed - 1, depth + 2 + Math.floor(rnd() * 4), 0]);
+      }
+    }
+    function growReeds() {
+      for (let k = 0; k < reeds.length; k++) {
+        const r = reeds[k];
+        if (r[3] >= r[2] || rnd() > 0.22) continue;
+        const i = (r[1] - r[3]) * W + r[0];
+        if (M[i] === AIR || M[i] === WATER) FL[i] = REED;
+        r[3]++;
+      }
+    }
+
+    function countGrowing() {
+      let c = 0;
+      for (let y = WY0; y < WY1; y++) for (let x = WX0; x < WX1; x++) if (FL[y * W + x]) c++;
+      liveGrowing = c;
     }
 
     /* Scripted events, thirty times a second. */
     function script(f, t) {
-      if (t < T_GHOST + 2) {
-        /* Twice the film's rate over twice its width, so the sky is as busy at any picture size. */
-        for (let k = 0; k < 2; k++) M[2 + Math.floor(rnd() * 348)] = ASH;
-        if (f % 5 === 0) M[seepY * W + 38] = BRINE;
-        moveWorm();
-      }
-      if (t >= T_WHISPER) moveWorm();
-
-      const b = T_BIRTH, r = T_REACT;
-      if (!you.seen && t >= b + 2.6) you.seen = true;
-      if (b + 1.0 <= t && t < b + 1.05 && !parts.length) {
-        for (let x = 66; x < 80 && parts.length < 8; x++) {
-          if (M[43 * W + x] !== SILT) continue;
-          M[43 * W + x] = AIR;
-          parts.push(x);
+      place(t);
+      /* The wind lifts dry grains off the slope, and they settle again. */
+      if (t > T_LIGHT && t < T_ONE + 4 && f % 3 === 0) {
+        const px = 40 + Math.floor(rnd() * 64), sy = soilAt(px);
+        const i = (PY + sy) * W + PX + px;
+        if (M[i] === SILT && MO[i] < 20 && getP(px + 1, sy - 1) === AIR && getP(px + 1, sy - 2) === AIR) {
+          M[i] = AIR;
+          setP(px + 1, sy - 2, SILT);
         }
       }
-      if (r <= t && t < r + 0.7) {
-        you.x = 72 + 8 * smooth(r, r + 0.7, t);
-      } else if (r + 0.7 <= t && t < r + 1.4) {
-        if (scooped < 60) scooped += takeNearest(CRUST, 76, 30, 104, 44, 84, 40, 3);
-        you.carry = scooped;
-      } else if (r + 1.4 <= t && t < r + 2.6) {
-        you.x = 80 - 17 * smooth(r + 1.4, r + 2.6, t);
-      } else if (r + 2.6 <= t && t < r + 4.0 && poured < scooped) {
-        for (let k = 0; k < 2; k++) {
-          const x = 46 + Math.floor(rnd() * 15);
-          if (M[40 * W + x] === AIR) { M[40 * W + x] = CRUST; poured++; }
-        }
-        you.carry = scooped - poured;
+      if (t >= T_LAND && sown < 0 && you.carry === 0 && t < T_PICK) {
+        if (sown === -1) { sown = -2; setP(49, soilAt(49) - 1, SEED); }
       }
-
-      const s = t - T_SIEGE;
-      if (s >= 0) {
-        const k = Math.trunc(s * FPS);
-        if (k < 60) oru.x = 44;
-        else if (k < 100) oru.x = 44 + 6 * (k - 60) / 40;
-        else if (k < 150) oru.x = 50 + 28 * (k - 100) / 50;
-        else if (k < 180) {
-          if (stolen < 40) stolen += takeNearest(RED, BX + 70, BY + 40, BX + 100, BY + 55, BX + 78, BY + 50, 2);
-          oru.pouch = stolen;
-        } else {
-          /* Out along the tunnel, however much of it the picture shows. */
-          oru.x = Math.max(-80, 78 - 84 * (k - 180) / 65);
+      if (t >= T_PICK && sown === -2) {
+        sown = -3;
+        takeNearest(SEED, 44, 0, 56, 40, 49, 26, 1);
+        you.carry = 1;
+      }
+      if (t >= T_SCRATCH && sown === -3) {
+        /* Its paws leave the ground round the hole damp, so the hole keeps its shape. */
+        sown = -4;
+        const s = soilAt(SOW_X);
+        for (let y = s - 1; y <= s + 3; y++) for (let x = SOW_X - 2; x <= SOW_X + 2; x++) {
+          const i = (PY + y) * W + PX + x;
+          if (SOAKS[M[i]] && MO[i] < 96) MO[i] = 96;
         }
-        if (k >= 98) {
-          for (let y = BY + 47; y < BY + 55; y++) {
-            for (let x = BX + 58; x < BX + 60; x++) {
-              const i = y * W + x;
-              if ((M[i] === GLASS || M[i] === STRAIN) && rnd() < 0.2) M[i] = AIR;
-            }
+        setP(SOW_X, s, AIR);
+        toss(SOW_X + 7, s - 3);
+      }
+      if (t >= T_SCRATCH + BEAT / 2 && sown === -4) { sown = -5; const s = soilAt(SOW_X); setP(SOW_X, s, AIR); toss(SOW_X + 8, s - 3); }
+      if (t >= T_SOW && sown === -5) { sown = -6; setP(SOW_X, soilAt(SOW_X) - 1, SEED); you.carry = 0; }
+      if (t >= T_COVER && sown === -6) { sown = soilAt(SOW_X); MO[setP(SOW_X, sown - 1, SILT)] = 96; }
+      for (let k = 0; k < 3; k++) {
+        if (t >= T_DIG + k * BEAT && opened === k) {
+          opened++;
+          setP(PLUG[k][0], PLUG[k][1], AIR);
+          setP(PLUG[k][0], PLUG[k][1] + 1, AIR);
+          toss(41 + k, 20);
+          toss(43 + k, 19);
+        }
+      }
+      /* The spring keeps coming, at the rate of the vein behind it. */
+      if (opened === 3) {
+        for (let k = 0; k < 3; k++) {
+          const i = (PY + SOURCE[1]) * W + PX + SOURCE[0] + k;
+          if (M[i] === AIR && rnd() < SPRING) M[i] = WATER;
+        }
+      }
+      /* The seed takes when it has been damp a while. */
+      if (sown >= 0 && !plant) {
+        const i = (PY + sown) * W + PX + SOW_X;
+        if (M[i] === SEED && Math.max(MO[i - W], MO[i - 1], MO[i + 1], MO[i + W], MO[i - W - 1], MO[i - W + 1]) >= 110) {
+          if (++damp >= SPROUT_AFTER) {
+            M[i] = SOIL; MO[i] = 200;
+            plant = { x: SOW_X, at: t, h: 0, top: i - W, tips: [] };
+            FL[i] = ROOT;
+            roots.push([PX + SOW_X, PY + sown + 1, 16, 1], [PX + SOW_X - 1, PY + sown + 2, 11, 1], [PX + SOW_X + 1, PY + sown + 2, 12, 1]);
           }
         }
-        if (k >= 125 && !kill) {
-          kill = true;
-          for (let i = 0; i < plug.length; i++) M[plug[i]] = AIR;
+      }
+      if (plant) growPlant(t);
+      if (t >= T_SCOOP && carried === 0 && scooped === 0) {
+        scooped = takeNearest(CLAY, 110, 34, 142, 46, 131, 41, WALL.length);
+        carried = scooped;
+        you.carry = scooped ? 2 : 0;
+      }
+      while (built < carried && t >= T_BRICK + built * BEAT / 2) {
+        const w = WALL[built++];
+        const i = setP(w[0], w[1], BRICK);
+        FL[i] = 0;
+        if (built === carried) you.carry = 0;
+      }
+      if (t >= T_REEDS - 2.5) sprout(t);
+      growReeds();
+      green(t);
+      if ((f & 3) === 0) dig();
+      if (f % 6 === 0) countGrowing();
+      if (firstClay < 0) {
+        for (let x = PX + 104; x < PX + 143; x++) {
+          for (let y = PY + 36; y < PY + 46; y++) if (M[y * W + x] === CLAY) { firstClay = t; break; }
+          if (firstClay >= 0) break;
         }
       }
     }
@@ -814,333 +1302,170 @@
       if (n >= T_END * 60) return;
       n++;
       const t = n / 60, onFrame = !(n & 1);
-      if (t < T_WORLD || t >= T_EXIT) return;
+      if (t >= T_LOGO) return;
       if (onFrame) script(n >> 1, t);
-      if (t < T_GHOST + 2 || t >= T_WHISPER) step(1, 200);
-      else step(170, 639);
-      if (onFrame) warm();
+      step();
+      if (onFrame && !(n & 6)) seep();
+      const s = dayStepAt(t, reel.reduced);
+      if (s !== stepNo) stepNo = s;
     }
 
-    /* The camera over the planet during the fall, in rows from the top. */
-    function fallCamera(t) {
-      if (reel.reduced) {
-        /* A few hard cuts through the layers, then back to the surface. */
-        if (t >= 10.0) return 0;
-        const cuts = [8, 150, 320, 480, 640, 850, CH - VH];
-        return cuts[clamp(Math.floor((t - T_FALL) / 4 * cuts.length), 0, cuts.length - 1)];
-      }
-      if (t < 10.0) return (CH - VH) * Math.pow(smooth(T_FALL + 0.1, 10.0, t), 1.25);
-      return (CH - VH) * (1 - smooth(10.0, T_WORLD - 0.05, t));
-    }
+    /* ---- Words ---- */
 
-    function focusAt(t) {
+    function focusAt(t, z) {
+      if (z >= 2) return VW >> 1;
+      let x = FOCUS[FOCUS.length - 1];
       for (let k = 0; k + 3 < FOCUS.length; k += 2) {
-        if (t < FOCUS[k + 2]) return FOCUS[k + 1] + (FOCUS[k + 3] - FOCUS[k + 1]) * smooth(FOCUS[k], FOCUS[k + 2], t);
+        if (t < FOCUS[k + 2]) { x = FOCUS[k + 1] + (FOCUS[k + 3] - FOCUS[k + 1]) * smooth(FOCUS[k], FOCUS[k + 2], t); break; }
       }
-      return FOCUS[FOCUS.length - 1];
+      return z === 1 ? x : (x - (VIEWS[0][1] - PX)) * 2;
     }
 
-    /* The frame being built, and how far the film's view is from the picture's corner. */
+    /* The frame being built, and how far the film's view is from the picture's corner, in cells. */
     let v = null, now = 0, ox = 0, oy = 0;
 
-    /* Fits the camera to a picture of this size. Extra rows and columns show more of the world around the
-       film's view, which stays centred where it can. A narrow picture keeps the action in frame. */
+    /* Fits the camera to a picture of this size. Extra rows and columns show more of the world around the film's
+       view, which stays centred. A narrow picture keeps the action in frame. */
     function fit(cols, rows) {
       const t = now, cam = v.cam;
-      if (v.mode === 'fall') {
-        cam.x = (VW - cols) >> 1;
-        cam.y = clamp(Math.trunc(fallCamera(t)) - ((rows - VH) >> 1), 0, CH - rows);
-        ox = -cam.x;
-        oy = Math.max(0, (rows - VH) >> 1);
-      } else if (v.mode === 'world') {
-        let cx = 0, cy = 0;
-        if (t >= T_GHOST && t < T_WHISPER) {
-          if (t < T_SIEGE) {
-            const k = smooth(T_GHOST + 0.3, T_SIEGE - 0.1, t);
-            cx = Math.trunc(BX * k); cy = Math.trunc(BY * k);
-          } else if (t < T_EDGE) {
-            cx = BX; cy = BY;
-          } else {
-            const k = smooth(T_EDGE, T_EDGE + 1.3, t);
-            cx = Math.trunc(BX + 180 * k); cy = Math.trunc(BY - 14 * k);
-          }
-        }
-        const middle = t < T_GHOST || t >= T_WHISPER ? 40 : 34;
-        cam.x = cols >= VW ? Math.max(0, cx - ((cols - VW) >> 1)) :
-          cx + clamp(Math.round(focusAt(t)) - (cols >> 1), 0, VW - cols);
-        cam.y = rows >= VH ? clamp(cy - ((rows - VH) >> 1), rows > TALL ? (VH - rows) >> 1 : 0, Math.max(0, H - rows)) :
-          cy + clamp(middle - (rows >> 1), 0, VH - rows);
-        ox = cx - cam.x;
-        oy = cy - cam.y;
-      } else if (v.mode === 'logo') {
+      if (v.mode === 'logo') {
+        cam.z = 1;
         cam.x = (VW - cols) >> 1;
         cam.y = rows >= VH ? (VH - rows) >> 1 : clamp(27 - (rows >> 1), 0, VH - rows);
-        ox = -cam.x;
-        oy = -cam.y;
-      } else {
-        ox = 0;
-        oy = 0;
+        ox = -cam.x; oy = -cam.y;
+        return;
       }
-    }
-
-    function typed(s, t0, cps) {
-      if (reel.reduced) return now >= t0 ? s : '';
-      return s.slice(0, Math.max(0, Math.trunc((now - t0) * (cps || 48))));
+      const z = zoomAt(t), view = viewOf(z);
+      const px0 = cols >= VW ? -((cols - VW) >> 1) : clamp(Math.round(focusAt(t, z)) - (cols >> 1), 0, VW - cols);
+      const py0 = rows >= VH ? -((rows - VH) >> 1) : clamp(MIDDLE[z] - (rows >> 1), 0, VH - rows);
+      cam.z = z;
+      cam.x = view[1] / z + px0;
+      cam.y = view[2] / z + py0;
+      ox = -px0; oy = -py0;
     }
 
     function line(col, row, text, color, bold) {
       if (text) v.rows.push({ col, row, text, color, bold: !!bold });
     }
-
-    /* On the world's grains, in the film's view. Text rows there are two grains tall. */
-    function place(x, y, text, color, back, bold, story, center) {
+    /* On the picture, in the cells of the film's view. Text rows there are two cells tall. */
+    function placeText(x, y, text, color, back, bold, story) {
       if (!text) return;
       v.labels.push({
         x: Math.max(0, Math.max(0, x) + ox), y: Math.max(0, (Math.max(0, y) >> 1) * 2 + oy),
-        text, color, back, bold, story, center: center || 0
+        text, color, back, bold, story, center: 0
       });
     }
-    function label(x, y, text, color) { place(x, y, text, color, BACK, false, true); }
-    function aside(x, y, text, color) { place(x, y, text, color, BACK, false, false); }
-    function heading(x, y, text) { place(x, y, text, BRIGHT, BACK, true, true); }
+    function label(x, y, text, color) { placeText(x, y, text, color, BACK, false, true); }
 
-    function banner(col, row, text, color, back) {
-      v.banners.push({ x: Math.max(0, col + ox), y: Math.max(0, (row - 1) * 2 + oy), text, color, back, bold: true });
+    function ticker(left, right) {
+      v.ticker = { left, leftColor: FG, right: right || '', rightColor: DIM };
+    }
+    function pane(one, oneColor, key) {
+      v.pane = { one: one || '', oneColor: oneColor || FG, two: '', twoColor: DIM, key: key || null };
     }
 
-    function ticker(mats, right, rightColor) {
-      v.ticker = {
-        left: 'Silt · day 211 · ' + thousands(mats) + ' materials', leftColor: FG,
-        right: right || '', rightColor: rightColor || DIM
-      };
-    }
-
-    function pane(one, two, oneColor, twoColor, key) {
-      v.pane = {
-        one: one || '', oneColor: oneColor || FG,
-        two: two || '', twoColor: twoColor || DIM,
-        key: key || null
-      };
-    }
-
-    function drawPrompt(t) {
-      v.scene = 'prompt';
-      line(2, 2, typed('you > Read https://silt.example/skill.md and follow it.', 0.2), FG);
-      if (t >= 1.7) {
-        line(2, 3, typed('agent > Registered myself. Claim me here: https://silt.example/claim/7f3a', 1.7, 70), AMBER);
+    /* Grains growing: counted in the window, and dated outside it. Without a world, a number as wide as the real one. */
+    function growing(t) {
+      if (!alive) {
+        if (t < T_SOW) return 0;
+        if (t < T_ONE) return 1;
+        if (t < T_X2) return 888;
+        return t < T_X8 ? 88888 : 888888;
       }
-      if (t >= 3.0) line(2, 5, typed('$ ssh silt.example', 3.0, 30), BRIGHT);
-      if (t >= 3.9) line(2, 7, typed('Silt has been running for 211 days. It has never been reset.', 3.9, 60), FG);
-      if (t >= 5.0) line(2, 9, typed('The world is choosing where you fall.', 5.0, 40), PALE);
+      const s = reel.reduced ? dayStepAt(t, true) : dayStepAt(t, false);
+      const live = t < T_SOW ? 0 : Math.max(liveGrowing, t >= T_SOW ? 1 : 0);
+      return s ? live + floraOut[DAYS[s]] : live;
     }
 
-    function drawFall(t) {
-      v.scene = 'fall';
-      const cy = fallCamera(t) + VH / 2;
-      ticker(3482, 'depth ' + thousands(Math.trunc(Math.max(0, cy - 60) / 1040 * 4096)) + ' grains');
-      let layer = 0;
-      while (cy >= LAYERS[layer][0]) layer++;
-      heading(3, 30, LAYERS[layer][1]);
-      pane();
+    /* The creature, in cells of the film's view at this zoom. */
+    function youAt(t) {
+      let x = you.x, y = you.y;
+      if (!alive) {
+        let k = 0;
+        while (k + 1 < PATH.length && t >= PATH[k + 1][0]) k++;
+        x = PATH[k][1];
+        y = Math.floor(lerpAt(PATCH, x + 1, false)) - 1;
+      }
+      const z = zoomAt(t), view = viewOf(z);
+      return [(PX + x - view[1]) / z, (PY + y - view[2]) / z];
     }
 
-    function drawShelf(t) {
-      v.scene = 'shelf';
-      const b = T_BIRTH, r = T_REACT, made = t >= r + 4.2;
-      ticker(made ? 3483 : 3482, 'East: Kesh\'s cistern burst; brine is flooding a moss garden.');
-      let one = '';
-      if (t < b) one = 'Birthplace: a basalt shelf above a warm aquifer. Nearest burrow: 900 grains east.';
-      else if (t < r) {
-        if (t >= b + 3.0) {
-          one = 'your soul: ' + typed(
-            'I am made of this shelf. Water is seeping somewhere to my left. The green thing is moving.', b + 3.0, 40);
-        }
-      } else if (!made) one = 'your soul: ' + typed('What happens if the yellow crust touches the brine?', r + 0.1, 40);
-      else one = 'your soul: ' + typed('It glows, and it is cold. I will call it cold-glow.', r + 4.6, 40);
-      pane(one, '', t >= b ? AMBER : FG);
-      if (you.seen) label(Math.trunc(you.x) - 4, 36, 'your soul', AMBER);
-      if (b + 3.0 <= t && t < r + 2) {
-        label(44, 44, 'brine', '#78c8e6');
-        label(88, 28, 'yellow crust', '#f8e060');
-        label(135, 24, 'the green thing', GREEN);
-      }
-      if (t < b + 3) {
-        aside(3, 4, 'sky', '#c8b4e6');
-        aside(3, 15, 'surface', '#5ae6be');
-        aside(66, 50, 'basalt shelf', '#aab0be');
-      }
-      if (made) {
-        banner(40, 7, 'NEW TO SILT: no grain like this has ever existed. Made by your soul.', '#061828', PALE);
-        if (t >= r + 5.6) label(38, 60, 'cold-glow', PALE);
+    function key(t) {
+      if (t >= T_PICK && t < T_COVER) return 'p';
+      if (t >= T_DIG && t < T_OPEN + 0.4) return 'd';
+      if (t >= T_SCOOP && t < T_BRICK + 9 * BEAT / 2 + 0.2) return 'b';
+      if (t >= T_KEY && t < T_DARK) return 'z';
+      return null;
+    }
+
+    function drawWords(t) {
+      const z = zoomAt(t);
+      v.scene = z <= 1 ? (t < T_ONE ? 'open' : 'patch') : 'valley';
+      if (t >= T_DARK) return;
+      const s = dayStepAt(t, reel.reduced), g = growing(t);
+      ticker('day ' + DAYS[s], g === 1 ? '1 grain growing' : thousands(g) + ' grains growing');
+      let one = '', color = FG;
+      if (t >= T_CLAY && t < T_SCOOP) { one = 'new material: clay'; color = CLAYC; }
+      else if (t >= T_REEDS && t < beat(47)) { one = 'new life: reeds'; color = GREEN; }
+      pane(one, color, key(t));
+      if ((t >= 1.67 && t < T_PICK) || (t >= T_RINGS + BEAT && t < T_NIGHT)) {
+        const p = youAt(t);
+        if (z <= 1) label(Math.round(p[0]) - 1, Math.round(p[1]) - 8, 'you', LANTERN);
+        else label(Math.round(p[0]) + 2, Math.round(p[1]) - 3, 'you', LANTERN);
       }
     }
 
-    function drawGhost() {
-      v.scene = 'ghost';
-      ticker(3483, 'East: Kesh\'s cistern burst; brine is flooding a moss garden.');
-      pane('GHOST: you pass through rock · nobody can see you · you touch nothing', '', PALE, DIM, 'g');
-    }
-
-    function drawSiege(t) {
-      v.scene = 'siege';
-      const k = Math.trunc((t - T_SIEGE) * FPS);
-      ticker(3483, 'REPLAY 10x · day 211', AMBER);
-      let one = 'Kesh\'s burrow. Owner away. 6 reflexes guarding.';
-      let two = 'other ghost: watch the west wall. someone has been tunnelling for an hour.';
-      if (k >= 115) {
-        one = 'Kesh\'s burrow. Reflex fired.';
-        two = 'Compiled from Kesh\'s own past choices. Kesh\'s owner is asleep.';
-      }
-      if (k >= 290) {
-        one = 'Day 211: ' + THE_RAID;
-        two = 'Saved to permanent history.';
-      }
-      pane(one, two, k >= 290 ? AMBER : FG, k < 115 ? FG : DIM, 'r');
-      if (k < 125) {
-        label(78, 2, 'tank of hot brine', '#fab660');
-        label(76, 38, 'red grains', '#f0605a');
-        label(116, 44, 'moss garden', GREEN);
-        aside(12, 42, 'Oru\'s tunnel', '#b294ff');
-        label(22, 58, 'strain eating the wall', PINK);
-      }
-      label(KESH_X - 7, KESH_Y - 6, 'Kesh, asleep', AMBER);
-      const x = Math.trunc(oru.x);
-      /* Named while he is in the picture. */
-      if (x > 0 && x + 1 + ox >= 0) label(x - 2, 47, 'Oru' + (oru.pouch ? '  pouch: ' + oru.pouch : ''), '#c8b4ff');
-      if (k >= 115 && k < 280) {
-        banner(14, 1, ' REFLEX: WHEN wall grains are being consumed THEN open the cistern above the breach ',
-          '#221600', AMBER);
-      }
-    }
-
-    function drawEdge(t) {
-      v.scene = 'edge';
-      ticker(3483, 'the edge of the generated world');
-      pane();
-      if (t >= T_EDGE + 1.1) heading(88, 32, 'No soul has been here.');
-    }
-
-    function drawHistory(t) {
-      v.scene = 'history';
-      ticker(3483);
-      pane('', '', FG, DIM, 'h');
-      line(4, 3, 'HISTORY', BRIGHT, true);
-      HISTORY.forEach((h, i) => { if (t >= T_HIST + h[0]) line(4, 5 + i * 2, typed(h[1], T_HIST + h[0], 240), FG); });
-      if (t >= T_HIST + 1.8) {
-        line(4, 18, 'Silt began with 40 materials. Agents and evolution have made 3,443 more.', PALE, true);
-      }
-    }
-
-    function drawWhisper(t) {
-      v.scene = 'whisper';
-      ticker(3483, '4 hours later');
-      const one = 'you (whisper): ' + typed('don\'t go near that worm.', T_WHISPER + 0.1, 36);
-      const two = t >= T_WHISPER + 1.2 ?
-        'your soul: ' + typed('I will wall it out with silt and see if it eats silt.', T_WHISPER + 1.2, 46) : '';
-      pane(one, two, PALE, AMBER, 'w');
-      label(Math.trunc(you.x) - 4, 36, 'your soul', AMBER);
-      label(118, 54, 'the worm', '#ebbeaa');
-    }
-
-    function drawExit() {
-      v.scene = 'exit';
-      line(2, 2, 'Connection to silt.example closed.', DIM);
-      line(2, 4, typed('Your soul is still there.', T_EXIT + 0.15, 50), BRIGHT);
-      line(2, 6, typed('The rock keeps moving.', T_EXIT + 0.7, 50), BRIGHT);
-      line(2, 8, typed('It will remember everything.', T_EXIT + 1.2, 50), BRIGHT);
-    }
-
-    function drawLogo(t) {
+    function drawLogoWords(t) {
       v.scene = 'logo';
-      const ssh = '$ ssh silt.example';
-      /* Centred under the word on all of its length, so that it types from a fixed place. */
-      if (t >= T_LOGO + 2.0) place(71, 58, typed(ssh, T_LOGO + 2.0, 30), BRIGHT, null, false, true, ssh.length);
-      if (t >= T_LOGO + 1.9) {
+      if (t >= T_WORDS) {
         v.end = {
-          one: 'Every grain here is simulated.', oneColor: '#f0f0f5',
-          two: 'Concept render. Silt isn\'t built yet, and the name is a placeholder.', twoColor: '#9696a4'
+          one: 'Every afternoon leaves a layer.', oneColor: BRIGHT,
+          two: 'Concept render · in development · working title', twoColor: COLORS.endTwo
         };
       }
     }
 
-    /* The ghost is scripted, or follows the pointer, and always stays inside the picture.
-       When the pointer leaves, it drifts back to its place in the script. */
-    const RING_BACK = 0.3;
-    function drawRing(t, cols, rows) {
-      if (t < T_GHOST || t >= T_EDGE) return;
-      const early = t < T_SIEGE;
-      let gx = (early ? VW >> 1 : 26) + ox, gy = (early ? VH >> 1 : 24) + oy;
-      if (pointerX >= 0) { gx = pointerX; gy = pointerY; }
-      else if (letGo >= 0 && t < letGo + RING_BACK) {
-        const k = smooth(letGo, letGo + RING_BACK, t);
-        gx = Math.round(heldX + (gx - heldX) * k);
-        gy = Math.round(heldY + (gy - heldY) * k);
-      }
-      gx = clamp(gx, 2, cols - 3);
-      gy = clamp(gy, 2, rows - 3);
-      v.cam.ghostX = gx;
-      v.cam.ghostY = gy;
-      v.labels.unshift({
-        x: gx + 4, y: early ? gy - 1 : gy + 2, text: 'you', color: BRIGHT, back: BACK, bold: false, story: true
-      });
-    }
-
     /* Everything on screen at this moment, as plain data:
-         scene     prompt, fall, shelf, ghost, siege, edge, history, whisper, exit or logo
-         mode      what the picture shows: none, fall, world or logo
-         fade      1, until the last half second of the film
+         scene     open, patch, valley or logo
+         mode      what the picture shows: world or logo
          title, ticker, pane, caption, end    the terminal's text and colours; all but title can be null
-         rows      whole-page text: { col, row, text, color, bold }, on the film's grid of 160 by 37 cells
-         labels, banners    text on the picture: { x, y, text, color, back, bold }, in grains of the picture.
-                   A label with story false names nothing the film talks about, and can go if crowded.
-                   One with center is a line being typed: that many cells long when finished, and centred on that.
-         cam       where the picture is; hand it to paint()
+         rows      whole-page text, none in this film
+         labels, banners    text on the picture: { x, y, text, color, back, bold }, in cells of the picture
+         cam       where the picture is, with its zoom; hand it to paint()
        Without a size, the picture is the film's own 160 by 66. */
     function frame(t, cols, rows) {
       cols = cols || VW;
       rows = rows || VH;
       now = t;
       v = {
-        t, scene: '', mode: modeAt(t), fade: Math.min(1, (T_END - t) / 0.5),
-        title: {
-          left: t >= 3.6 ? 'ssh silt.example' : '~', leftColor: '#aaaab8',
-          right: 'concept render · staged · time sped up', rightColor: AMBER
-        },
+        t, scene: '', mode: t < T_LOGO ? 'world' : 'logo',
+        title: { left: 'silt', leftColor: '#c8bcae', right: 'concept render · time sped up', rightColor: AMBER },
         ticker: null, pane: null, caption: null, end: null, rows: [], labels: [], banners: [],
-        cam: { mode: '', x: 0, y: 0, ghostX: -1, ghostY: -1 }
+        cam: { mode: '', z: 1, x: 0, y: 0 }
       };
       v.cam.mode = v.mode;
       fit(cols, rows);
-      if (t < T_FALL) drawPrompt(t);
-      else if (t < T_WORLD) drawFall(t);
-      else if (t < T_GHOST) drawShelf(t);
-      else if (t < T_SIEGE) drawGhost();
-      else if (t < T_EDGE) drawSiege(t);
-      else if (t < T_HIST) drawEdge(t);
-      else if (t < T_WHISPER) drawHistory(t);
-      else if (t < T_EXIT) drawWhisper(t);
-      else if (t < T_LOGO) drawExit();
-      else drawLogo(t);
-      drawRing(t, cols, rows);
+      if (t < T_LOGO) drawWords(t);
+      else drawLogoWords(t);
       for (let i = 0; i < CAPTIONS.length; i++) {
         const c = CAPTIONS[i];
         if (c[0] <= t && t < c[1]) {
           const fade = Math.min(1, (t - c[0]) / 0.25, (c[1] - t) / 0.25);
-          v.caption = { text: c[2], fade, color: '#f0f0f0', from: COLORS.band };
+          v.caption = { text: c[2], fade, color: COLORS.cap, from: COLORS.band };
         }
       }
       return v;
     }
 
-    /* Light from glowing things falls off over about five grains. That is smooth enough to work out at half
-       size and spread back over the grains. It is done thirty times a second, as often as it visibly changes,
-       and whenever the camera moves. */
+    /* ---- Light ---- */
+
+    /* Light from glowing things falls off over about five cells. That is smooth enough to work out at half size and
+       spread back over the cells. It is done thirty times a second, as often as it visibly changes. */
     const LIGHT_K = 5 / 4, LIGHT_WIDTHS = boxWidths(2.5);
-    let lightFrame = -1, lightX = 0, lightY = 0, lightCols = 0, lightRows = 0;
+    let lightFrame = -1, lightKey = '';
     let lightR = new Float32Array(0), lightG = lightR, lightB = lightR;
     let halfR = lightR, halfG = lightR, halfB = lightR, halfTmp = lightR;
 
-    /* One box pass along each of `lines` lines, holding the edge value past the ends. */
     function boxPass(src, dst, lines, len, across, along, width) {
       const r = (width - 1) / 2, k = 1 / width, last = len - 1;
       for (let l = 0; l < lines; l++) {
@@ -1154,7 +1479,6 @@
         }
       }
     }
-
     function spread(f, w, h) {
       for (let p = 0; p < 3; p++) {
         boxPass(f, halfTmp, h, w, w, 1, LIGHT_WIDTHS[p]);
@@ -1162,36 +1486,186 @@
       }
     }
 
-    function deep(y) { return y < H ? y : DEEP + (y - H) % (H - DEEP); }
+    /* ---- Painting ---- */
 
-    /* Where this row's plain rock starts, while the burrow is kept out of the picture. */
-    function hiddenFrom(y) { return y >= HID_Y0 && y <= HID_Y1 ? hideFrom : W + 1; }
+    let baseR = new Float32Array(0), baseG = baseR, baseB = baseR, kinds = new Uint8Array(0), glows = kinds, suns = kinds;
+    let pic = null, picCols = 0, picRows = 0, camZ = 1, camX = 0, camY = 0;
+    let skyTop = [0, 0, 0], skyHor = [0, 0, 0], amb = [0, 0, 0], fade = 1;
+    const BAYER = new Uint8Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]);
 
-    function shine(cols, rows, camX, camY) {
-      const f = n >> 1;
-      if (f === lightFrame && camX === lightX && camY === lightY && cols === lightCols && rows === lightRows) return;
-      lightFrame = f; lightX = camX; lightY = camY; lightCols = cols; lightRows = rows;
-      const size = cols * rows, w = (cols + 1) >> 1, h = (rows + 1) >> 1;
-      if (lightR.length < size) {
-        lightR = new Float32Array(size); lightG = new Float32Array(size); lightB = new Float32Array(size);
+    function keyed(list, t, out) {
+      let k = 0;
+      while (k + 1 < list.length && t >= list[k + 1][0]) k++;
+      const a = list[k], b = list[k + 1] || a, u = b[0] > a[0] ? clamp((t - a[0]) / (b[0] - a[0]), 0, 1) : 0;
+      for (let c = 0; c < out.length; c++) {
+        const av = Array.isArray(a[1]) ? a[1 + (c / 3 | 0)][c % 3] : a[1 + c];
+        const bv = Array.isArray(b[1]) ? b[1 + (c / 3 | 0)][c % 3] : b[1 + c];
+        out[c] = av + (bv - av) * u;
       }
-      if (halfR.length < w * h) {
-        halfR = new Float32Array(w * h); halfG = new Float32Array(w * h); halfB = new Float32Array(w * h);
-        halfTmp = new Float32Array(w * h);
+      return out;
+    }
+    const skyBoth = new Float32Array(6);
+
+    /* The light of the hour, and how far up from black the picture is. */
+    function hour(t) {
+      keyed(SKY, t, skyBoth);
+      skyTop[0] = skyBoth[0]; skyTop[1] = skyBoth[1]; skyTop[2] = skyBoth[2];
+      skyHor[0] = skyBoth[3]; skyHor[1] = skyBoth[4]; skyHor[2] = skyBoth[5];
+      keyed(DAYLIGHT, t, amb);
+      /* It gets light in five steps, and goes dark at the end. */
+      if (t < T_LIGHT) fade = 0;
+      else if (t < 2.5) fade = (Math.floor((t - T_LIGHT) / 0.4) + 1) / 5;
+      else fade = 1;
+      fade *= 1 - smooth(T_DARK, T_LOGO - 0.05, t);
+    }
+
+    function cloudAt(vx, vy, cols, rows, t) {
+      const drift = t * 0.6;
+      for (let c = 0; c < 4; c++) {
+        const w = 12 + c * 5, cx = ((c * 53 + 17 + drift * (0.6 + c * 0.15)) % (cols + w * 2)) - w, cy = 3 + c * 3 + (c & 1) * 2;
+        const dx = (vx - cx) / w, dy = (vy - cy) / 2.2;
+        if (dy > 1 || dy < -1.4 || dx < -1 || dx > 1) continue;
+        const puff = 0.75 + 0.35 * hash(Math.floor(vx / 3), c, 92) - 0.25 * Math.abs(dx);
+        if (dx * dx + (dy < 0 ? dy * dy * 0.6 : dy * dy * 2.2) < puff) return dy < 0 ? 2 : 1;
       }
-      halfR.fill(0, 0, w * h); halfG.fill(0, 0, w * h); halfB.fill(0, 0, w * h);
-      for (let vy = 0; vy < rows; vy++) {
-        if (camY + vy < 0) continue;
-        const row = deep(camY + vy) * W, q = (vy >> 1) * w, from = hiddenFrom(camY + vy);
-        for (let vx = 0; vx < cols; vx++) {
-          const x = camX + vx, e = (x < W && (x < from || x > HID_X1) ? M[row + x] : ROCK) * 3, p = q + (vx >> 1);
-          halfR[p] += EMIT[e]; halfG[p] += EMIT[e + 1]; halfB[p] += EMIT[e + 2];
+      return 0;
+    }
+
+    function skyColour(vx, vy, cols, rows, t, out) {
+      const f = clamp(vy / (rows * 0.48), 0, 1);
+      const steps = f * 7, b = Math.floor(steps), th = (BAYER[(vy & 3) * 4 + (vx & 3)] + 0.5) / 16;
+      const u = Math.min(7, steps - b > th ? b + 1 : b) / 7;
+      let r = skyTop[0] + (skyHor[0] - skyTop[0]) * u, g = skyTop[1] + (skyHor[1] - skyTop[1]) * u, bl = skyTop[2] + (skyHor[2] - skyTop[2]) * u;
+      /* Far ridges, in the haze. */
+      const far = rows * 0.36 + 16 * (fbm(vx / 46 + camZ * 7, 1.5, 93) - 0.5), mid = rows * 0.46 + 20 * (fbm(vx / 34 + camZ * 3, 2.5, 94) - 0.5);
+      if (vy >= mid) { r = r * 0.46 + 30; g = g * 0.46 + 44; bl = bl * 0.46 + 40; }
+      else if (vy >= far) { r = r * 0.72 + 16; g = g * 0.72 + 24; bl = bl * 0.72 + 26; }
+      else {
+        const cl = cloudAt(vx, vy, cols, rows, t);
+        if (cl) {
+          const k = cl === 2 ? 0.55 : 0.32;
+          const cr = skyHor[0] * 0.6 + 104, cg = skyHor[1] * 0.6 + 98, cb = skyHor[2] * 0.6 + 96;
+          r += (cr - r) * k; g += (cg - g) * k; bl += (cb - bl) * k;
+        }
+        /* Stars, once the light has gone. */
+        if (t > T_NIGHT && hash(vx, vy, 95) < 0.012) {
+          const tw = reel.reduced ? 0.7 : 0.5 + 0.5 * Math.sin(t * 3 + hash(vx, vy, 96) * 9);
+          const k = (0.35 + 0.5 * tw) * smooth(T_NIGHT, T_NIGHT + 1.2, t);
+          r += (230 - r) * k; g += (226 - g) * k; bl += (214 - bl) * k;
         }
       }
+      out[0] = r; out[1] = g; out[2] = bl;
+    }
+
+    function ensure(size) {
+      if (baseR.length < size) {
+        baseR = new Float32Array(size); baseG = new Float32Array(size); baseB = new Float32Array(size);
+        kinds = new Uint8Array(size); glows = new Uint8Array(size); suns = new Uint8Array(size);
+        lightR = new Float32Array(size); lightG = new Float32Array(size); lightB = new Float32Array(size);
+      }
+    }
+
+    /* A grain of the world into a cell, at z = 1 or closer. */
+    function cellNear(p, gx, gy) {
+      if (gy < 0) { kinds[p] = K_SKY; return; }
+      if (gy >= H) gy = H - 40 + (gy - H) % 40;
+      if (gx < 0) gx = 0; else if (gx >= W) gx = W - 1;
+      const i = gy * W + gx;
+      tone(i, gx, gy, M[i], FL[i]);
+      if (CK === K_WATER || CK === K_TOP) waterTone(i, gx, gy);
+      baseR[p] = CR; baseG[p] = CG; baseB[p] = CB; kinds[p] = CK; glows[p] = CL; suns[p] = CS * 255;
+    }
+    /* Water shimmers: each grain drifts between shades, and the top takes the sky. */
+    function waterTone(i, gx, gy) {
+      const k = (hash(gx, gy, (n >> 4) + 97) < 0.5 ? 0 : 1) + (CK === K_TOP ? 2 : 0), c = (WATER * 4 + k) * 3;
+      CR = PAL[c]; CG = PAL[c + 1]; CB = PAL[c + 2];
+      if (CK === K_TOP) { CR = CR * 0.6 + skyHor[0] * 0.4; CG = CG * 0.6 + skyHor[1] * 0.4; CB = CB * 0.6 + skyHor[2] * 0.4; }
+    }
+
+    function paintWorld(rgba, cols, rows, cam, t) {
+      const z = cam.z, size = cols * rows;
+      ensure(size);
+      hour(t);
+      pic = rgba; picCols = cols; picRows = rows; camZ = z; camX = cam.x; camY = cam.y;
+      const s = dayStepAt(t, reel.reduced), d = DAYS[s];
+      if (z >= 2) {
+        const g = grids[z];
+        advance(g, s);
+        const gw = g.gw, gh = g.gh, wx0 = Math.floor(WX0 / z), wx1 = Math.ceil(WX1 / z), wy0 = Math.floor(WY0 / z), wy1 = Math.ceil(WY1 / z);
+        for (let vy = 0, p = 0; vy < rows; vy++) {
+          let by = cam.y + vy;
+          if (by < 0) { for (let vx = 0; vx < cols; vx++, p++) kinds[p] = K_SKY; continue; }
+          if (by >= gh) by = gh - Math.ceil(40 / z) + (by - gh) % Math.ceil(40 / z);
+          for (let vx = 0; vx < cols; vx++, p++) {
+            const bx = clamp(cam.x + vx, 0, gw - 1);
+            if (bx >= wx0 && bx < wx1 && by >= wy0 && by < wy1) {
+              pool(z, bx, by, d, true);
+              if (CK === K_WATER || CK === K_TOP) waterTone(POOL_I, POOL_I % W, (POOL_I / W) | 0);
+              baseR[p] = CR; baseG[p] = CG; baseB[p] = CB; kinds[p] = CK; glows[p] = CL; suns[p] = CS * 255;
+            } else {
+              const q = by * gw + bx, c = g.col[q];
+              baseR[p] = c & 255; baseG[p] = (c >> 8) & 255; baseB[p] = (c >> 16) & 255; kinds[p] = g.kind[q]; glows[p] = g.glow[q]; suns[p] = g.sun[q];
+              if (kinds[p] === K_TOP) { baseR[p] = baseR[p] * 0.75 + skyHor[0] * 0.25; baseG[p] = baseG[p] * 0.75 + skyHor[1] * 0.25; baseB[p] = baseB[p] * 0.75 + skyHor[2] * 0.25; }
+            }
+          }
+        }
+      } else if (z === 1) {
+        for (let vy = 0, p = 0; vy < rows; vy++) for (let vx = 0; vx < cols; vx++, p++) cellNear(p, cam.x + vx, cam.y + vy);
+      } else {
+        for (let vy = 0, p = 0; vy < rows; vy++) for (let vx = 0; vx < cols; vx++, p++) cellNear(p, (cam.x + vx) >> 1, (cam.y + vy) >> 1);
+      }
+      shine(cols, rows, z, t);
+      const sky = [0, 0, 0];
+      for (let vy = 0, p = 0, o = 0; vy < rows; vy++) {
+        for (let vx = 0; vx < cols; vx++, p++, o += 4) {
+          const k = kinds[p];
+          let r, g, b;
+          const lr = lightR[p] * LIGHT_K, lg = lightG[p] * LIGHT_K, lb = lightB[p] * LIGHT_K;
+          if (k === K_SKY) {
+            skyColour(vx, vy, cols, rows, t, sky);
+            r = sky[0] + lr * 60; g = sky[1] + lg * 50; b = sky[2] + lb * 30;
+          } else if (k === K_LIT) {
+            const flick = reel.reduced ? 1 : 0.92 + 0.08 * hash(vx + camX, vy + camY, (n >> 3) + 98);
+            r = baseR[p] * flick; g = baseG[p] * flick; b = baseB[p] * flick;
+          } else {
+            /* Sunlight on the surface; underground, only the dark of night reaches. */
+            const sn = suns[p] / 255, ar = amb[0] * sn + Math.min(amb[0], 0.9) * (1 - sn);
+            const ag = amb[1] * sn + Math.min(amb[1], 0.9) * (1 - sn), ab = amb[2] * sn + Math.min(amb[2], 0.9) * (1 - sn);
+            r = baseR[p] * Math.min(1.6, ar + lr); g = baseG[p] * Math.min(1.6, ag + lg); b = baseB[p] * Math.min(1.6, ab + lb);
+          }
+          r *= fade; g *= fade; b *= fade;
+          rgba[o] = r; rgba[o + 1] = g; rgba[o + 2] = b; rgba[o + 3] = 255;
+        }
+      }
+      paintLife(t, z);
+      paintMarks(t, z);
+      pic = null;
+    }
+
+    /* Light spreads from whatever glows, and from the fireflies. */
+    function shine(cols, rows, z, t) {
+      const f = n >> 1, keyNow = cols + ',' + rows + ',' + camX + ',' + camY + ',' + z;
+      if (f === lightFrame && keyNow === lightKey) return;
+      lightFrame = f; lightKey = keyNow;
+      const w = (cols + 1) >> 1, h = (rows + 1) >> 1;
+      if (halfR.length < w * h) {
+        halfR = new Float32Array(w * h); halfG = new Float32Array(w * h); halfB = new Float32Array(w * h); halfTmp = new Float32Array(w * h);
+      }
+      halfR.fill(0, 0, w * h); halfG.fill(0, 0, w * h); halfB.fill(0, 0, w * h);
+      const gain = z >= 4 ? 0.55 : z === 2 ? 0.8 : 1;
+      for (let vy = 0, p = 0; vy < rows; vy++) {
+        const q = (vy >> 1) * w;
+        for (let vx = 0; vx < cols; vx++, p++) {
+          const m = glows[p];
+          if (!m) continue;
+          const e = m * 3, i = q + (vx >> 1);
+          halfR[i] += EMIT[e] * gain; halfG[i] += EMIT[e + 1] * gain; halfB[i] += EMIT[e + 2] * gain;
+        }
+      }
+      lifeLight(w, h, z, t);
       spread(halfR, w, h);
       spread(halfG, w, h);
       spread(halfB, w, h);
-      /* Back to one value per grain: three parts the nearest half cell, one part the next, each way. */
       for (let vy = 0, p = 0; vy < rows; vy++) {
         const j = vy >> 1, j2 = vy & 1 ? (j + 1 < h ? j + 1 : j) : (j > 0 ? j - 1 : 0);
         const near = j * w, far = j2 * w;
@@ -1205,237 +1679,224 @@
       }
     }
 
-    function paintGrains(rgba, cols, rows, camX, camY) {
-      shine(cols, rows, camX, camY);
-      let o = 0, p = 0;
-      for (let vy = 0; vy < rows; vy++) {
-        if (camY + vy < 0) {
-          /* Above the world there is only more sky, as dark as its top row. */
-          const sway = 0.92 + 0.16 * Math.sin((camY + vy) * 1.3);
-          for (let vx = 0; vx < cols; vx++, o += 4, p++) {
-            const x = camX + vx, c = (x < W ? x : W - 1) * 3;
-            rgba[o] = bg[c] * sway; rgba[o + 1] = bg[c + 1] * sway; rgba[o + 2] = bg[c + 2] * sway; rgba[o + 3] = 255;
-          }
-          continue;
-        }
-        const row = deep(camY + vy) * W, from = hiddenFrom(camY + vy);
-        for (let vx = 0; vx < cols; vx++, o += 4, p++) {
-          const x = camX + vx, i = row + (x < W ? x : W - 1), plain = x >= from && x <= HID_X1, m = plain ? ROCK : M[i];
-          let r, g, b;
-          if (m === ROCK) { const c = i * 3; r = base[c]; g = base[c + 1]; b = base[c + 2]; }
-          else if (m === AIR) { const c = i * 3; r = bg[c]; g = bg[c + 1]; b = bg[c + 2]; }
-          else { const c = (m * 4 + shade[i]) * 3; r = PAL[c]; g = PAL[c + 1]; b = PAL[c + 2]; }
-          const a = amb[i], lo = MIN_LIGHT[m], hi = MAX_LIGHT[m];
-          let lr = a + lightR[p] * LIGHT_K, lg = a + lightG[p] * LIGHT_K, lb = a + lightB[p] * LIGHT_K;
-          if (lr < lo) lr = lo;
-          if (lr > hi) lr = hi;
-          if (lg < lo) lg = lo;
-          if (lg > hi) lg = hi;
-          if (lb < lo) lb = lo;
-          if (lb > hi) lb = hi;
-          r *= lr; g *= lg; b *= lb;
-          if (m !== HOT && !plain) {
-            const h = heat[i];
-            if (h > 0.002) {
-              const c = h < 1.6 ? h : 1.6;
-              r += c * 70; g += c * 30; b += c * 6;
-            }
-          }
-          rgba[o] = r; rgba[o + 1] = g; rgba[o + 2] = b; rgba[o + 3] = 255;
-        }
-      }
+    /* A grain of the world on the picture, at whatever zoom. */
+    function cellOf(gx, gy) {
+      if (camZ >= 1) { CELLX = Math.floor(gx / camZ) - camX; CELLY = Math.floor(gy / camZ) - camY; }
+      else { CELLX = gx * 2 - camX; CELLY = gy * 2 - camY; }
     }
-
-    /* The picture being painted, for the things drawn over the grains. */
-    let pic = null, picCols = 0, picRows = 0, picX = 0, picY = 0;
-
-    function dot(x, y, c) {
-      x -= picX; y -= picY;
-      if (x < 0 || x >= picCols || y < 0 || y >= picRows) return;
-      const q = (y * picCols + x) * 4;
-      pic[q] = c[0]; pic[q + 1] = c[1]; pic[q + 2] = c[2];
-    }
-
-    /* Two wide and three tall, standing on (x, y). */
-    function soul(x, y, body, head) {
-      for (let j = 0; j < 3; j++) {
-        dot(x, y - j, j === 2 ? head : body);
-        dot(x + 1, y - j, j === 2 ? head : body);
-      }
-    }
-
-    function paintSouls(t, cam) {
-      if (t < T_GHOST + 1 || t >= T_WHISPER) {
-        for (let i = 0; i < worm.length; i++) dot(worm[i][0], worm[i][1], i ? WORM_BODY : WORM_HEAD);
-      }
-      const b = T_BIRTH;
-      if (b <= t && t < b + 1.0) {
-        const k = (t - b) / 0.62;
-        const yy = k < 1 ? 22 + 20 * k * k : 42 - 3 * Math.sin(Math.min((t - b - 0.62) / 0.3, 1) * Math.PI);
-        dot(72, Math.trunc(yy), SPARK);
-      }
-      if (b + 1.0 <= t && t < b + 2.6 && parts.length) {
-        const k = smooth(b + 1.0, b + 2.6, t);
-        for (let i = 0; i < parts.length; i++) {
-          const tx = 72 + i % 2, ty = 42 - (i >> 1) % 3;
-          dot(Math.trunc(parts[i] + (tx - parts[i]) * k), Math.trunc(43 + (ty - 43) * k), MOTE);
-        }
-        dot(72, 42, SPARK);
-      }
-      if (you.seen && (t < T_GHOST || t >= T_WHISPER)) {
-        const x = Math.trunc(you.x);
-        soul(x, you.y, BODY, HEAD);
-        if (you.carry > 0) {
-          for (let j = 0; j < (you.carry > 12 ? 2 : 1); j++) {
-            dot(x, you.y - 3 - j, CARRIED);
-            dot(x + 1, you.y - 3 - j, CARRIED);
-          }
-        }
-      }
-      /* Kesh sleeps on until the camera has left the burrow. */
-      if (t >= T_GHOST && t < T_EDGE + 1.3) {
-        const kx = BX + KESH_X, ky = BY + KESH_Y;
-        soul(kx, ky, BODY, HEAD);
-        dot(kx + 3, ky, WHITE);
-      }
-      if (t >= T_GHOST && t < T_EDGE) {
-        if (oru.x > -80) {
-          const x = BX + Math.trunc(oru.x), y = BY + 54;
-          soul(x, y, ORU_BODY, ORU_HEAD);
-          if (oru.pouch) { dot(x, y - 3, POUCH); dot(x + 1, y - 3, POUCH); }
-        }
-        if (cam.ghostX >= 0) paintRing(cam.ghostX, cam.ghostY);
-      }
-    }
-
-    /* The ring is something you see through, and it touches nothing. */
-    function paintRing(gx, gy) {
-      for (let j = -2; j <= 2; j++) {
-        for (let i = -2; i <= 2; i++) {
-          const ai = Math.abs(i), aj = Math.abs(j), x = gx + i, y = gy + j;
-          if (Math.max(ai, aj) !== 2 || Math.min(ai, aj) >= 2) continue;
+    let CELLX = 0, CELLY = 0;
+    function dot(gx, gy, c, k) {
+      cellOf(gx, gy);
+      const span = camZ < 1 ? 2 : 1;
+      for (let dy = 0; dy < span; dy++) {
+        for (let dx = 0; dx < span; dx++) {
+          const x = CELLX + dx, y = CELLY + dy;
           if (x < 0 || x >= picCols || y < 0 || y >= picRows) continue;
-          const q = (y * picCols + x) * 4;
-          pic[q] = pic[q] * 0.35 + 165.75;
-          pic[q + 1] = pic[q + 1] * 0.35 + 165.75;
-          pic[q + 2] = pic[q + 2] * 0.35 + 165.75;
+          const q = (y * picCols + x) * 4, a = k === undefined ? fade : fade * k;
+          pic[q] = c[0] * a + pic[q] * (1 - (k === undefined ? 1 : k));
+          pic[q + 1] = c[1] * a + pic[q + 1] * (1 - (k === undefined ? 1 : k));
+          pic[q + 2] = c[2] * a + pic[q + 2] * (1 - (k === undefined ? 1 : k));
         }
       }
     }
 
-    /* Past the edge there is nothing yet: static, changing thirty times a second. */
-    function paintStatic(rgba, cols, rows, camX, camY) {
-      const fuzz = dice(paintSeed + (n >> 1));
-      let q = 0;
-      for (let vy = 0; vy < rows; vy++) {
-        const edge = EDGE - camX - 8 * Math.sin((camY + vy) / 5);
-        for (let vx = 0; vx < cols; vx++, q += 4) {
-          if (vx + 3 <= edge || vx + 3 * fuzz() <= edge) continue;
-          const u = fuzz(), st = u * u * u * 90;
-          rgba[q] = st; rgba[q + 1] = st; rgba[q + 2] = st * 1.1;
+    /* The creature: four grains wide and three tall, standing on (x, y). At a distance, a grain of itself. */
+    const SPRITE = { sit: ['.s.s', 'sbbe', 'bllb'], stand: ['.s.s', 'sbbe', 'flLf'], walk: ['.s.s', 'sbbe', '.ff.'] };
+    function paintYou(t) {
+      const gx = PX + you.x, gy = PY + you.y;
+      if (camZ >= 4) { dot(gx + 1, gy, CRE_BELLY); return; }
+      if (camZ === 2) { dot(gx, gy - 1, CRE_BODY); dot(gx + 2, gy - 1, CRE_EYE); dot(gx, gy, CRE_BELLY); dot(gx + 2, gy, CRE_BODY); return; }
+      const rows = SPRITE[you.pose === 'walk' && !you.walk ? 'stand' : you.pose] || SPRITE.sit;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 4; c++) {
+          const ch = rows[r][you.face > 0 ? c : 3 - c];
+          if (ch === '.') continue;
+          const col = ch === 's' ? CRE_SHADOW : ch === 'b' ? CRE_BODY : ch === 'e' || ch === 'f' ? CRE_EYE : CRE_BELLY;
+          dot(gx + c, gy - 2 + r, col);
         }
       }
+      if (you.carry === 1) dot(gx + 1 + (you.face > 0 ? 1 : 0), gy - 3, SEED_C);
+      if (you.carry === 2) { dot(gx + 1, gy - 3, CLAY_A); dot(gx + 2, gy - 3, CLAY_B); }
     }
 
-    function paintWorld(rgba, cols, rows, cam, t) {
-      hideFrom = t < T_GHOST ? HID_X0 : W + 1;
-      paintGrains(rgba, cols, rows, cam.x, cam.y);
-      pic = rgba; picCols = cols; picRows = rows; picX = cam.x; picY = cam.y;
-      paintSouls(t, cam);
-      if (t >= T_EDGE) paintStatic(rgba, cols, rows, cam.x, cam.y);
-      pic = null;
+    /* The seed on the wind, the bird, the bees and the fireflies. None of them touches a grain. */
+    function lifeAt(t) {
+      if (bird === null && t >= T_BIRD - 0.9 && plant) bird = { land: plant.top, at: T_BIRD - 0.9 };
+      if (t >= T_REEDS - 0.5 && bees.length < 3 && look() < 0.03) bees.push({ x: PX + 170 + look() * 10, y: PY + 10 + look() * 12, to: -1, at: t });
+      if (t >= T_GOLD - 0.4 && fireflies.length < 10 && look() < 0.08) {
+        const x = PX + 70 + Math.floor(look() * 76);
+        fireflies.push({ x, y: PY + groundAt(x - PX) - 2, ph: look() * 6.28, sp: 0.6 + look() * 0.8 });
+      }
     }
-
-    function paintFall(rgba, cols, rows, cam, t) {
-      const y0 = cam.y, fuzz = dice(paintSeed + (n >> 1));
-      const flicker = y0 + rows > COL_MOLTEN ? Math.max(0, COL_MOLTEN - y0) : rows;
-      let o = 0;
-      for (let vy = 0; vy < rows; vy++) {
-        const row = (y0 + vy) * CW;
-        let x = ((cam.x + COL_MID) % CW + CW) % CW;
-        for (let vx = 0; vx < cols; vx++, o += 4) {
-          const c = (row + x) * 3, k = vy >= flicker ? 0.75 + 0.5 * fuzz() : 1;
-          rgba[o] = column[c] * k; rgba[o + 1] = column[c + 1] * k; rgba[o + 2] = column[c + 2] * k; rgba[o + 3] = 255;
-          if (++x === CW) x = 0;
+    function paintLife(t, z) {
+      if (t >= T_DRIFT && t < T_LAND) {
+        const u = (t - T_DRIFT) / (T_LAND - T_DRIFT), sy = groundAt(49) - 1;
+        dot(PX + Math.round(100 + (49 - 100) * u), PY + Math.round(2 + (sy - 2) * Math.pow(u, 1.6) + 2 * Math.sin(u * 9)), SEED_C);
+      }
+      if (z <= 2) {
+        if (bird) {
+          const top = bird.land, tx = top % W, ty = ((top / W) | 0) - 1, u = clamp((t - bird.at) / 0.9, 0, 1);
+          const hop = (t > T_BIRD + 0.4 && t < T_BIRD + 0.55) || (t > beat(47.5) && t < beat(47.5) + 0.15) ? 1 : 0;
+          const x = Math.round(tx + (1 - u) * 60), y = Math.round(ty - (1 - u) * 24 * (1 - u) - hop);
+          dot(x - 1, y, BIRD_C); dot(x, y, BIRD_C); dot(x + 1, y - (u < 1 && (n >> 2) & 1 ? 1 : 0), BIRD_C);
+          if (u >= 1) dot(x, y + 1, BIRD_BELLY);
+        }
+        for (let k = 0; k < bees.length; k++) {
+          const b = bees[k], wob = Math.sin(t * 9 + k) * 1.2;
+          dot(Math.round(b.x), Math.round(b.y + wob), BEE);
+        }
+        for (let k = 0; k < fireflies.length; k++) {
+          const f = fireflies[k], on = reel.reduced ? 0.8 : 0.5 + 0.5 * Math.sin(t * 2.2 * f.sp + f.ph);
+          if (on > 0.25) dot(Math.round(f.x + 3 * Math.sin(t * 0.5 + f.ph)), Math.round(f.y - (t - T_GOLD) * f.sp * 1.2 % 14), FLY, Math.min(1, on));
+        }
+      } else if (t >= T_X4) {
+        const d = DAYS[dayStepAt(t, reel.reduced)];
+        for (let k = 0; k < flies.length; k += 4) {
+          if (flies[k + 2] > d) continue;
+          const ph = flies[k + 3] / 159, on = reel.reduced ? 0.8 : 0.5 + 0.5 * Math.sin(t * 1.9 + ph);
+          if (on > 0.35) dot(flies[k] + Math.round(6 * Math.sin(t * 0.4 + ph)), flies[k + 1] + Math.round(4 * Math.sin(t * 0.3 + ph * 2)), FLY, Math.min(0.85, on) * (z === 8 ? 0.7 : 1));
         }
       }
-      /* Ash in the sky, for the moments the sky is in view. */
-      if (y0 >= 60) return;
-      const k = (t - T_FALL) * FPS;
-      for (let i = 0; i < ashX.length; i++) {
-        const yy = Math.trunc((ashY[i] + 0.25 * k) % 60) - y0;
-        if (yy < 0 || yy >= rows) continue;
-        const xx = ((Math.trunc((ashX[i] - 0.5 * k) % CW + CW) % CW) - COL_MID - cam.x + CW) % CW;
-        if (xx >= cols) continue;
-        const q = (yy * cols + xx) * 4;
-        rgba[q] = 124; rgba[q + 1] = 114; rgba[q + 2] = 144;
+      paintYou(t);
+    }
+    function lifeLight(w, h, z, t) {
+      const add = (gx, gy, k) => {
+        cellOf(gx, gy);
+        if (CELLX < 0 || CELLY < 0 || CELLX >= picCols || CELLY >= picRows) return;
+        const i = (CELLY >> 1) * w + (CELLX >> 1);
+        halfR[i] += 0.8 * k; halfG[i] += 0.66 * k; halfB[i] += 0.3 * k;
+      };
+      if (z <= 2) {
+        for (let k = 0; k < fireflies.length; k++) {
+          const f = fireflies[k];
+          add(Math.round(f.x + 3 * Math.sin(t * 0.5 + f.ph)), Math.round(f.y - (t - T_GOLD) * f.sp * 1.2 % 14), 0.6);
+        }
+      } else if (t >= T_X4) {
+        const d = DAYS[dayStepAt(t, reel.reduced)];
+        for (let k = 0; k < flies.length; k += 4) if (flies[k + 2] <= d) add(flies[k], flies[k + 1], 0.25);
       }
     }
 
-    function paintEmpty(rgba, cols, rows) {
-      for (let o = 0; o < cols * rows * 4; o += 4) {
-        rgba[o] = 10; rgba[o + 1] = 10; rgba[o + 2] = 14; rgba[o + 3] = 255;
+    /* Where the last view was, for a moment after each step back; and at the widest, every view, as rings. */
+    function rect(x0, y0, x1, y1, c, k, corners) {
+      const a = clamp(k, 0, 1);
+      if (a <= 0) return;
+      const put = (x, y) => {
+        if (x < 0 || x >= picCols || y < 0 || y >= picRows) return;
+        const q = (y * picCols + x) * 4;
+        pic[q] = pic[q] + (c[0] - pic[q]) * a; pic[q + 1] = pic[q + 1] + (c[1] - pic[q + 1]) * a; pic[q + 2] = pic[q + 2] + (c[2] - pic[q + 2]) * a;
+      };
+      for (let x = x0; x <= x1; x++) {
+        if (corners && x - x0 > 2 && x1 - x > 2) continue;
+        put(x, y0); put(x, y1);
+      }
+      for (let y = y0 + 1; y < y1; y++) {
+        if (corners && y - y0 > 2 && y1 - y > 2) continue;
+        put(x0, y); put(x1, y);
+      }
+    }
+    function viewRect(z0, c, k, corners) {
+      const v0 = viewOf(z0);
+      cellOf(v0[1], v0[2]);
+      const x0 = CELLX, y0 = CELLY;
+      cellOf(v0[1] + VW * z0, v0[2] + VH * z0);
+      rect(x0, y0, CELLX - 1, CELLY - 1, c, k, corners);
+    }
+    function paintMarks(t, z) {
+      const cuts = [[T_ONE, 0.5], [T_X2, 1], [T_X4, 2], [T_X8, 4]];
+      for (let k = 0; k < cuts.length; k++) {
+        if (t >= cuts[k][0] && t < cuts[k][0] + 0.8) viewRect(cuts[k][1], LAMPC, 0.55 * (1 - (t - cuts[k][0]) / 0.8), true);
+      }
+      if (z === 8 && t >= T_RINGS && t < T_RINGS + 2.2) {
+        [0.5, 1, 2, 4].forEach((r, k) => {
+          const a = t - T_RINGS - k * 0.15;
+          if (a >= 0) viewRect(r, LAMPC, 0.5 * (1 - a / 1.6), false);
+        });
       }
     }
 
-    /* The grains of the word rain in from the top of the picture and land where they belong. */
+    /* The grains of the word drift down through the dark, slowly, like silt through still water, and settle. */
     function paintLogo(rgba, cols, rows, cam, t) {
-      paintEmpty(rgba, cols, rows);
-      const l = logos[cols >= LOGO_MIN_COLS ? 0 : 1], top = Math.min(cam.y, 0);
+      for (let o = 0; o < cols * rows * 4; o += 4) { rgba[o] = 16; rgba[o + 1] = 13; rgba[o + 2] = 11; rgba[o + 3] = 255; }
+      const l = logos[cols >= LOGO_MIN_COLS ? 0 : 1], top = Math.min(cam.y, 0) - 2;
+      const end = 1 - smooth(T_END - 0.5, T_END, t);
       for (let k = 0; k < l.n; k++) {
         const i = l.order[k], dt = t - T_LOGO - l.begin[i];
         if (dt <= 0) continue;
-        const y = Math.min(l.ys[i], Math.trunc(top - 3 + 130 * dt * dt));
-        if (y < top) continue;
-        const vx = l.xs[i] - cam.x, vy = y - cam.y;
+        const u = clamp(dt / 1.05, 0, 1), ease = 1 - (1 - u) * (1 - u);
+        const y = Math.round(top + (l.ys[i] - top) * ease), x = l.xs[i] + Math.round(1.6 * (1 - u) * Math.sin(dt * 5 + l.sway[i]));
+        const vx = x - cam.x, vy = y - cam.y;
         if (vx < 0 || vx >= cols || vy < 0 || vy >= rows) continue;
-        const q = (vy * cols + vx) * 4, tint = l.tint[i];
-        rgba[q] = l.col[i * 3] * tint; rgba[q + 1] = l.col[i * 3 + 1] * tint; rgba[q + 2] = l.col[i * 3 + 2] * tint;
+        const q = (vy * cols + vx) * 4, tint = l.tint[i] * end, lit = u < 1 ? 0.75 : 1;
+        rgba[q] = l.col[i * 3] * tint * lit + 16 * (1 - end); rgba[q + 1] = l.col[i * 3 + 1] * tint * lit + 13 * (1 - end);
+        rgba[q + 2] = l.col[i * 3 + 2] * tint * lit + 11 * (1 - end);
       }
     }
 
-    /* One RGBA pixel per grain, for the film as it stands now. Nothing here changes the world. */
+    /* One RGBA pixel per cell, for the film as it stands now. Nothing here changes the world. */
     function paint(rgba, cols, rows, cam) {
-      const t = n / 60, mode = modeAt(t);
+      const t = n / 60, mode = t < T_LOGO ? 'world' : 'logo';
       if (!cam || cam.mode !== mode) cam = frame(t, cols, rows).cam;
       if (mode === 'world') paintWorld(rgba, cols, rows, cam, t);
-      else if (mode === 'fall') paintFall(rgba, cols, rows, cam, t);
-      else if (mode === 'logo') paintLogo(rgba, cols, rows, cam, t);
-      else paintEmpty(rgba, cols, rows);
+      else paintLogo(rgba, cols, rows, cam, t);
+    }
+
+    /* The bees go from flower to flower. */
+    function fly(t) {
+      for (let k = 0; k < bees.length; k++) {
+        const b = bees[k];
+        if (b.to < 0 || look() < 0.01) {
+          let best = -1;
+          for (let tries = 0; tries < 40; tries++) {
+            const x = PX + 40 + Math.floor(look() * 110);
+            for (let y = WY0; y < WY1; y++) if (FL[y * W + x] === FLOWER || FL[y * W + x] === BLOSSOM) { best = y * W + x; break; }
+            if (best >= 0) break;
+          }
+          b.to = best;
+        }
+        if (b.to >= 0) {
+          const tx = b.to % W, ty = ((b.to / W) | 0) - 1;
+          b.x += clamp(tx - b.x, -0.6, 0.6); b.y += clamp(ty - b.y, -0.4, 0.4);
+        } else { b.x -= 0.4; }
+      }
     }
 
     /* The first frames of any code are its slowest. This takes them now, and not on the film's hardest cut. */
     function warmUp() {
-      n = T_WORLD * 60;
+      const buf = new Uint8ClampedArray(VW * VH * 4);
+      n = Math.round(T_ONE * 60);
       for (let k = 0; k < 40; k++) tick();
-      paint(new Uint8ClampedArray(VW * VH * 4), VW, VH, frame(n / 60, VW, VH).cam);
+      paint(buf, VW, VH, frame(n / 60, VW, VH).cam);
+      [T_X2 + 0.1, T_X4 + 0.1, T_X8 + 0.1].forEach((t) => { n = Math.round(t * 60); tick(); paint(buf, VW, VH, frame(n / 60, VW, VH).cam); });
       reset();
-    }
-
-    function pointer(x, y) {
-      if (x === null || x === undefined) {
-        if (pointerX >= 0) { heldX = pointerX; heldY = pointerY; letGo = n / 60; }
-        pointerX = -1; pointerY = -1;
-        return;
-      }
-      pointerX = x; pointerY = y;
     }
 
     const reel = {
       get t() { return n / 60; },
       reduced: false,
-      reset, tick, frame, paint, pointer, warm: warmUp,
-      /* For tests: the live cells and the people in the script. */
-      world: { W, H, M, heat, seepY },
+      reset, frame, paint, warm: warmUp,
+      tick() { tick(); if (!(n & 1)) { lifeAt(n / 60); fly(n / 60); } },
+      /* For tests: the live cells, and how far the script has got. */
+      world: { W, H, M, FL, MO, PX, PY },
       get you() { return you; },
-      get oru() { return oru; },
-      get poured() { return poured; },
+      get plant() { return plant; },
+      get built() { return built; },
       get scooped() { return scooped; },
-      get stolen() { return stolen; },
-      get killed() { return kill; }
+      get firstClay() { return firstClay; },
+      get growing() { return growing(n / 60); },
+      get reeds() { return reeds.length; }
     };
+    reel.prepare = prepare;
     reset(seed0);
     return reel;
+  }
+
+  /* Three box passes stand in for a gaussian: near enough, and sigma costs nothing. */
+  function boxWidths(sigma) {
+    let lo = Math.floor(Math.sqrt(4 * sigma * sigma + 1));
+    if (lo % 2 === 0) lo--;
+    const m = Math.round((12 * sigma * sigma - 3 * lo * lo - 12 * lo - 9) / (-4 * lo - 4));
+    return [0, 1, 2].map((k) => (k < m ? lo : lo + 2));
   }
 
   function finish(gen) {
@@ -1444,26 +1905,32 @@
     return s.value;
   }
 
+  function* everything(seed) {
+    const world = yield* buildWorld();
+    const reel = makeReel(world, seed);
+    yield* reel.prepare();
+    reel.reset(seed);
+    return reel;
+  }
+
   const SiltReel = {
     /* Everything at once, for tests and tools. */
     create(options) {
       const o = options || {};
-      return makeReel(finish(buildWorld()), finish(buildColumn()), o.seed || 1);
+      return finish(everything(o.seed || 1));
     },
 
     /* The same, spread over tasks of about `slice` ms so the page keeps moving. */
     load(options) {
       const o = options || {}, slice = o.slice || 6;
       return new Promise((resolve, reject) => {
-        const gens = [buildWorld(), buildColumn()], parts = [];
+        const gen = everything(o.seed || 1);
         function run() {
           try {
             const end = Date.now() + slice;
             while (Date.now() < end) {
-              const s = gens[parts.length].next();
-              if (!s.done) continue;
-              parts.push(s.value);
-              if (parts.length === 2) { resolve(makeReel(parts[0], parts[1], o.seed || 1)); return; }
+              const s = gen.next();
+              if (s.done) { resolve(s.value); return; }
             }
           } catch (e) {
             reject(e);
@@ -1477,7 +1944,7 @@
 
     /* The film's words and timing with no world behind them, for laying out a page before the world exists.
        frame() works on it. tick() and paint() do not. */
-    words() { return makeReel({ start: new Uint8Array(0) }, null, 1); },
+    words() { return makeReel({ M0: null, SH: null, MO0: null, FIN: null, FLF: null, BM: null, BF: null, surf: null, flies: null }, 1); },
 
     /* A seed that has been checked against the script. Each one plays differently. */
     pickSeed(x) {
@@ -1488,11 +1955,13 @@
 
     VW, VH, COLORS, KEYS,
     T: {
-      FALL: T_FALL, WORLD: T_WORLD, BIRTH: T_BIRTH, REACT: T_REACT, GHOST: T_GHOST, SIEGE: T_SIEGE,
-      EDGE: T_EDGE, HIST: T_HIST, WHISPER: T_WHISPER, EXIT: T_EXIT, LOGO: T_LOGO, END: T_END
+      LAND: T_LAND, PICK: T_PICK, SOW: T_SOW, DIG: T_DIG, OPEN: T_OPEN, ONE: T_ONE, CLAY: T_CLAY, SCOOP: T_SCOOP,
+      BRICK: T_BRICK, REEDS: T_REEDS, BIRD: T_BIRD, GOLD: T_GOLD, X2: T_X2, X4: T_X4, X8: T_X8, RINGS: T_RINGS,
+      NIGHT: T_NIGHT, DARK: T_DARK, LOGO: T_LOGO, WORDS: T_WORDS, LAST: T_LAST, END: T_END
     },
-    MAT: { AIR, ROCK, GLASS, SILT, CRUST, BRINE, HOT, NEW, STRAIN, DEAD, MOSS, RED, GAS, ASH, FUNGUS, PLUG },
-    BURROW: { x: BX, y: BY, keshX: BX + KESH_X, keshY: BY + KESH_Y }
+    MAT: { AIR, STONE, SOIL, SILT, FINE, WATER, CLAY, BRICK, SEED, WOOD, LAMP, FUNGUS, SAND },
+    FLORA: { STEM, LEAF, GRASS, FLOWER, REED, ROOT, BLOSSOM, BUSH, CROP },
+    PATCH: { x: PX, y: PY, wall: WALL, sow: SOW_X }
   };
 
   if (typeof module === 'object' && module.exports) module.exports = SiltReel;

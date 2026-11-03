@@ -23,10 +23,10 @@
     const seek = document.getElementById('film-seek');
     const slot = bar.parentNode;
 
-    const FILM = 59;
-    /* Frames from 57.2 s to 58.4 s are one still: the logo and "Silt isn't built yet".
+    const FILM = 60;
+    /* Frames from 57.5 s to 59.4 s are one still: the word and the lines under it.
        After that the film fades to black, so it holds here instead. */
-    const END_CARD = 57.6;
+    const END_CARD = 59.0;
     const reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
     let done = false, waiting = false, framed = !!at || !!playing;
 
@@ -70,7 +70,7 @@
     function update() {
       const t = now();
       time.textContent = (waiting ? '--:--' : fmt(t)) + ' / ' + fmt(dur());
-      seek.value = Math.round(t / dur() * 590);
+      seek.value = Math.round(t / dur() * 600);
       seek.setAttribute('aria-valuetext', fmt(t));
       drawBar();
     }
@@ -164,7 +164,7 @@
     seek.addEventListener('input', () => {
       /* Nothing is fetched until someone asks. Scrubbing is asking. */
       if (v.readyState === 0) v.preload = 'metadata';
-      const at = seek.value / 590 * dur();
+      const at = seek.value / 600 * dur();
       if (at >= dur() && v.paused) {
         /* The card, rather than the black frame after it. */
         done = true;
