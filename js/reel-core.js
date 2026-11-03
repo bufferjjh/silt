@@ -1146,7 +1146,8 @@
       }
     }
 
-    /* The plant from the seed: a stem by a fixed budget, branches, leaves round the tips, blossom late. */
+    /* The plant from the seed: a stem that rises a grain at a time to a set height, branches, leaves round the tips,
+       blossom late. */
     function growPlant(t) {
       const p = plant;
       const want = Math.min(18, Math.floor((t - p.at) * 0.95));
@@ -1809,7 +1810,7 @@
       }
       if (z === 8 && t >= T_RINGS && t < T_RINGS + 2.2) {
         [0.5, 1, 2, 4].forEach((r, k) => {
-          const a = t - T_RINGS - k * 0.15;
+          const a = t - T_RINGS - (reel.reduced ? 0 : k * 0.15);
           if (a >= 0) viewRect(r, LAMPC, 0.5 * (1 - a / 1.6), false);
         });
       }

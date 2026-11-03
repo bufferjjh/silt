@@ -17,14 +17,26 @@
 }
 
 :root {
-  --paper: #E8E1D3;
-  --ink: #15131A;
-  --band: #0A0910;
-  --grey: #77727F;
-  --cold: #BFE8FF;
-  --molten: #F06A20;
-  --molten-ink: #170902;
-  --molten-grey: #6B2906;
+  --paper: #ECE2D2;
+  --ink: #1F1714;
+  --band: #15110F;
+  --grey: #76685F;
+  --lamp: #FFD49A;
+  --floor: #E3A85C;
+  --floor-ink: #221405;
+  --floor-grey: #6E4515;
+
+  /* The film's terminal. */
+  --term: #100D0B;
+  --term-title: #221B16;
+  --term-pane: #181310;
+  --term-rule: #3B2F27;
+  --term-ink: #E8DED1;
+  --term-key: #968676;
+  --term-key-on: #FFF6E8;
+  --term-key-on-back: #6B4C33;
+  --term-cap: #090706;
+  --term-cap-ink: #F4ECE0;
 
   --cw: 9px;
   --lh: 27px;
@@ -63,11 +75,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* The root is molten so that overscrolling past the bottom shows the same orange.
+/* The root is the floor colour so that overscrolling past the bottom shows the same honey.
    Paper is painted by the body, and above the top of the page by body::before. */
 html {
   color-scheme: light;
-  background: var(--molten);
+  background: var(--floor);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -198,7 +210,7 @@ h1 {
 }
 
 ::selection { color: var(--paper); background: var(--ink); }
-.band ::selection { color: var(--band); background: var(--cold); }
+.band ::selection { color: var(--band); background: var(--lamp); }
 
 /* ---- Typed controls ---- */
 
@@ -220,7 +232,7 @@ button {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color: var(--band); background: var(--paper); }
+button:focus-visible { outline: 1px solid var(--lamp); outline-offset: 0; color: var(--band); background: var(--paper); }
 @media (hover: hover) {
   button:hover { color: var(--band); background: var(--paper); }
 }
@@ -236,7 +248,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 .cue.on { visibility: visible; }
 .cue:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; background: var(--paper); }
 @media (hover: hover) {
-  .cue:hover { color: var(--band); background: var(--cold); }
+  .cue:hover { color: var(--band); background: var(--lamp); }
 }
 
 .ctl[hidden] { display: none; }
@@ -266,7 +278,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 
 .seek { position: relative; display: block; flex: 1 1 0; min-width: calc(10 * var(--cw)); height: var(--lh); overflow: hidden; }
 .bar { display: block; white-space: pre; }
-.bar .head { color: var(--cold); }
+.bar .head { color: var(--lamp); }
 .probe { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; }
 .seek input {
   position: absolute;
@@ -277,7 +289,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   opacity: 0;
   cursor: pointer;
 }
-.seek:focus-within { outline: 1px solid var(--cold); outline-offset: -1px; }
+.seek:focus-within { outline: 1px solid var(--lamp); outline-offset: -1px; }
 
 #film-box.full {
   display: flex;
@@ -295,7 +307,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 
 /* ---- Exhibit A, drawn live. A terminal in the page's own cell, on the page's own rows. ---- */
 
-.live .film { height: calc(var(--reel-rows) * var(--lh)); background: #0A0A0E; }
+.live .film { height: calc(var(--reel-rows) * var(--lh)); background: var(--term); }
 .live .film video { visibility: hidden; }
 .film video[hidden] { display: none; }
 .live .film-slot { height: var(--lh); }
@@ -315,8 +327,8 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #D6D6DC;
-  background: #0A0A0E;
+  color: var(--term-ink);
+  background: var(--term);
   line-height: var(--lh);
   white-space: pre;
   text-transform: none;
@@ -328,15 +340,13 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 .reel > div { flex: none; position: relative; height: calc(var(--r, 1) * var(--lh)); padding-inline: var(--cw); }
 .reel .ln { display: block; height: var(--lh); }
 
-.reel-bar { display: flex; justify-content: space-between; background: #1C1C24; }
+.reel-bar { display: flex; justify-content: space-between; background: var(--term-title); }
 .reel-bar .r { margin-left: auto; white-space: pre; }
 
 .still-on .reel-tick { display: none; }
 .reel-tick .row { display: flex; justify-content: space-between; }
 .reel-tick .more { display: block; }
-.on-tick .reel-tick, .on-pane .reel-pane, .on-pane .reel-keys { background: #111118; }
-.on-pane.spill .reel-pane, .on-tick.spill .reel-tick { background: none; }
-.on-pane.spill .reel-pane::before { display: none; }
+.on-tick .reel-tick, .on-pane .reel-pane, .on-pane .reel-keys { background: var(--term-pane); }
 .on-pane .reel-pane::before {
   content: "";
   position: absolute;
@@ -344,7 +354,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   right: 0;
   top: 0;
   height: 1px;
-  background: #2C2C3A;
+  background: var(--term-rule);
 }
 
 /* The picture takes whatever rows the text leaves. The canvas is one pixel per grain, and is never resampled. */
@@ -354,7 +364,6 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   display: block;
   image-rendering: pixelated;
 }
-.reel.ghosting .reel-pic { cursor: none; }
 
 .reel.banner-up > .reel-pic { overflow: visible; }
 
@@ -371,34 +380,26 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   padding-inline: var(--label-pad);
   line-height: var(--label-h);
   overflow: hidden;
-  background: #0A0A0E;
+  background: var(--term);
 }
 .reel-label[hidden] { display: none; }
 
-.reel-keys { color: #7C7C8A; }
+.reel-keys { color: var(--term-key); }
 .reel-keys span { display: none; padding-inline: 2px; margin-left: -2px; margin-right: calc(3 * var(--cw)); }
 .on-pane .reel-keys span { display: inline; }
 .on-pane .reel-keys.only span { display: none; margin-right: 0; }
-.on-pane .reel-keys span.on { display: inline; color: #FAFAFC; background: #464664; }
-
-.reel.spill-keys .reel-keys span { visibility: hidden; }
-.reel.spill-keys .reel-keys { background: none; }
+.on-pane .reel-keys span.on { display: inline; color: var(--term-key-on); background: var(--term-key-on-back); }
 
 .reel.keys-up > .reel-keys { position: absolute; right: 0; background: none; height: var(--lh); }
 .reel.keys-up .reel-tick .r { margin-right: calc(12 * var(--cw)); }
 
-.reel > .reel-cap { padding: 0; color: #F0F0F0; background: #040407; text-align: center; }
+.reel > .reel-cap { padding: 0; color: var(--term-cap-ink); background: var(--term-cap); text-align: center; }
 .reel-cap .lines { display: block; white-space: pre-line; }
 .reel-cap.air .lines { padding-top: var(--lh); }
-/* For screen readers. */
-.reel-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .reel-end { position: absolute; left: 0; right: 0; top: calc(-2 * var(--lh)); }
 
-/* Rows for the scenes that are only text. They sit over the picture and whatever rows are free around it. */
-.reel > .reel-sheet { position: absolute; left: 0; right: 0; height: auto; padding: 0; pointer-events: none; }
-
 .reel-lock, .reel-lock body { overflow: hidden; }
-.live #film-box.full { padding: 0; background: #0A0A0E; height: 100vh; height: 100dvh; }
+.live #film-box.full { padding: 0; background: var(--term); height: 100vh; height: 100dvh; }
 .live #film-box.full .film { height: auto; }
 .live #film-box.full .ctl-slot { padding-inline: var(--cw); }
 .live #film-box.overlay { position: fixed; inset: 0; z-index: 3; }
@@ -422,42 +423,12 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 }
 .stage canvas[hidden], .still[hidden] { display: none; }
 /* The plate until a frame of the model has been drawn. Shown at its own size, so that a grain is
-   still a grain; a narrow plate crops it and keeps the sealed room, which sits to the right. */
-.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: none; object-position: 86% 50%; }
+   still a grain; a narrow plate crops it round the cabin and the well, and a short one takes more sky than cave. */
+.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: none; object-position: 64% 40%; }
 @media (min-width: 1600px) { .still { object-position: 50% 50%; } }
 
 /* The longest thing this tag can say, so that changing it moves nothing. */
 .tag { min-width: 25ch; text-align: right; }
-
-/* The pointer, on the plate: five grains across, with the corners left out. It touches nothing. */
-.ghost {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.ghost[hidden] { display: none; }
-.ghost i {
-  position: absolute;
-  left: calc(var(--grain) * -2.5);
-  top: calc(var(--grain) * -2.5);
-  width: calc(var(--grain) * 5);
-  height: calc(var(--grain) * 5);
-  border: var(--grain) solid var(--paper);
-  clip-path: polygon(20% 0, 80% 0, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0 80%, 0 20%, 20% 20%);
-}
-.ghost span {
-  position: absolute;
-  left: calc(var(--grain) * 2.5);
-  top: calc(var(--grain) * 2.5);
-  padding-inline: var(--cw);
-  color: var(--paper);
-  background: var(--band);
-}
 
 /* One row on a wide plate. The record drops below the counters when the row runs out of columns. */
 .sand-slot { height: var(--lh); }
@@ -490,7 +461,7 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   top: calc(4.5 * var(--lh) - var(--grain) / 2);
   width: var(--grain);
   height: var(--grain);
-  background: var(--cold);
+  background: var(--lamp);
 }
 @supports (width: round(down, 1px, 1px)) {
   .grain {
@@ -498,6 +469,15 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
     top: round(calc(4.5 * var(--lh) - var(--grain) / 2), 1px);
   }
 }
+/* The seed growing, drawn grain by grain on whole device pixels; seed.js places it on the grain. */
+.plinth canvas {
+  position: absolute;
+  display: block;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+/* The longest thing this tag says, so that changing it moves nothing. */
+#seed-tag { min-width: 21ch; text-align: right; }
 .voice { text-transform: none; }
 @media (forced-colors: active) {
   .grain { forced-color-adjust: none; background: CanvasText; }
@@ -505,17 +485,17 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
 
 /* ---- The floor ---- */
 
-.molten {
+.floor {
   position: relative;
   height: calc(9 * var(--lh));
   padding-top: calc(4 * var(--lh));
-  color: var(--molten-ink);
-  background: var(--molten);
+  color: var(--floor-ink);
+  background: var(--floor);
 }
-.molten ::selection { color: var(--molten); background: var(--molten-ink); }
-.molten .gutter { bottom: 0; }
-.molten .nums { color: var(--molten-grey); }
-.molten .nums::before { content: "3840\A 3872\A 3904\A 3936\A 3968\A 4000\A 4032\A 4064\A 4096"; }
+.floor ::selection { color: var(--floor); background: var(--floor-ink); }
+.floor .gutter { bottom: 0; }
+.floor .nums { color: var(--floor-grey); }
+.floor .nums::before { content: "3840\A 3872\A 3904\A 3936\A 3968\A 4000\A 4032\A 4064\A 4096"; }
 
 /* ---- Below the discrete sizes the frame is fluid, snapped down to whole columns. ---- */
 
@@ -556,16 +536,12 @@ button:focus-visible { outline: 1px solid var(--cold); outline-offset: 0; color:
   #film-time { margin-left: auto; }
   .sand-slot { height: calc(3 * var(--lh)); }
   .film-ctl { column-gap: var(--cw); }
-  .sand-ctl { grid-template-columns: minmax(0, 1fr); }
-  .counters {
-    grid-column: 1;
-    grid-row: 2;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    column-gap: var(--cw);
-    white-space: normal;
-  }
-  .record { grid-column: 1; grid-row: 3; }
+  /* The button and one count share the first row, the other count takes the second, the record the third. */
+  .sand-ctl { grid-template-columns: auto minmax(0, 1fr); }
+  .counters { display: contents; }
+  .c-moved { grid-column: 2; grid-row: 1; justify-self: end; }
+  .c-living { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+  .record { grid-column: 1 / -1; grid-row: 3; }
 }
 
 /* The headline takes three short rows here. Its block stays to the width of the text. */
