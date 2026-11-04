@@ -30,9 +30,13 @@ export async function virtualClock(page, seed) {
     window.__step = (ms) => { vt += ms; const list = cbs.splice(0); list.forEach((cb) => cb(vt)); };
   }, seed);
 }
-/* PLAYWRIGHT can point at another build (a file:// URL to playwright-core's index.mjs); CHANNEL=chrome uses an
-   installed Chrome instead of Playwright's own Chromium. */
+/* Which browser: CHANNEL (e.g. chrome) if set; otherwise the Chrome at CHROME_PATH if set (cloud machines set it,
+   and Chrome plays the mp4's H.264 and AAC, which Playwright's own Chromium may not); otherwise Playwright's Chromium.
+   PLAYWRIGHT can point at another build (a file:// URL to playwright-core's index.mjs). */
 export async function launch() {
   const { chromium } = await import(process.env.PLAYWRIGHT || 'playwright');
-  return chromium.launch({ headless: true, ...(process.env.CHANNEL ? { channel: process.env.CHANNEL } : {}) });
+  const opts = { headless: true };
+  if (process.env.CHANNEL) opts.channel = process.env.CHANNEL;
+  else if (process.env.CHROME_PATH) opts.executablePath = process.env.CHROME_PATH;
+  return chromium.launch(opts);
 }
