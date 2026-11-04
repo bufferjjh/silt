@@ -116,10 +116,19 @@
 
   let shape = null, elapsed = 0, state = 'seed', inView = false, raf = 0, last = 0, geo = null;
 
-  /* Whole device pixels per grain, and the seed's own device pixel, so the drawing lands on the grain. */
-  function measure() {
+  /* The seed's size in CSS px: a whole number of device pixels. The stylesheet sizes the single grain by it. */
+  function size() {
     const dpr = window.devicePixelRatio || 1;
     const K = Math.max(1, Math.round(GRAIN * dpr));
+    const v = K / dpr + 'px', root = document.documentElement;
+    if (root.style.getPropertyValue('--grain') !== v) root.style.setProperty('--grain', v);
+    return { dpr, K };
+  }
+  size();
+
+  /* Whole device pixels per grain, and the seed's own device pixel, so the drawing lands on the grain. */
+  function measure() {
+    const { dpr, K } = size();
     const box = plinth.getBoundingClientRect(), g = grain.getBoundingClientRect();
     const sx = Math.round((g.left + window.scrollX) * dpr), sy = Math.round((g.top + window.scrollY) * dpr);
     const px = (box.left + window.scrollX) * dpr, py = (box.top + window.scrollY) * dpr;
@@ -210,7 +219,8 @@
   document.addEventListener('visibilitychange', kick);
   let queued = 0;
   window.addEventListener('resize', () => {
-    if (queued || !canvas.parentNode) return;
+    if (!canvas.parentNode) { size(); return; }
+    if (queued) return;
     queued = requestAnimationFrame(() => { queued = 0; place(); draw(); });
   });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (canvas.parentNode) { place(); draw(); } });

@@ -1,5 +1,6 @@
 /* Exhibit A, drawn live. reel-core.js decides what is on screen; this puts it there: a canvas with one pixel
-   per grain, shown at a whole number of device pixels, and every word as real text on the page's own grid.
+   per grain, shown at a whole number of device pixels, about two CSS pixels, and every word as real text on the
+   page's own grid. The picture's grain has nothing to do with the type's: words keep to the grid, grains to the pixels.
    The soundtrack is the clock while it plays. If any of this stops working, film.js carries on with the
    video from the same moment. */
 (function () {
@@ -17,12 +18,13 @@
   try { ctx = canvas.getContext('2d', { alpha: false }); } catch (e) { /* No canvas, no stage. */ }
   if (!ctx) return;
 
-  const T = Core.T, VW = Core.VW, VH = Core.VH, COLORS = Core.COLORS, KEYS = Core.KEYS;
+  const T = Core.T, VW = Core.VW, VH = Core.VH, Q = Core.Q, COLORS = Core.COLORS, KEYS = Core.KEYS;
   const SOUND = 'assets/silt-film.m4a';
   /* The still is the widest view near its end, one pixel per cell: this many cells across, with this many rows of sky
-     above the world's top. Its last rows are plain rock. */
+     above the world's top. Its last rows are plain rock. A still made at a coarser density is drawn that many cells
+     to its pixel. */
   const STILL_SRC = 'assets/film-still.png', STILL_T = 52.6;
-  const STILL_W = 200, STILL_SKY = 12, STILL_DEEP = 8;
+  const STILL_W = 200 * Q, STILL_SKY = 12 * Q, STILL_DEEP = 8 * Q;
   const NAME = 'Silt, a 60-second concept film with sound, drawn grain by grain: a small creature tends one patch of ' +
     'ground, and the camera steps back across the valley that grows from it.';
   const NAME_SILENT = NAME.replace(' with sound', '');
@@ -30,10 +32,26 @@
   const END_CARD = 59.0; /* Where the video picks up an ended film. */
   const WAIT_FOR_SOUND = 2000;
   const WAIT_FOR_WORLD = 10000; /* After a press. Longer than this, the device won't keep up anyway. */
+  /* Milliseconds of work the world took to make, past which the device is far too slow for the film (a fast desktop
+     takes about 300). It gets the video from the start rather than a picture that falls behind the sound. */
+  const TOO_SLOW = Core.SLOW_BUILD;
+  /* Under that, the warm-up times the device on the film's own work. Its busiest second, where the spring bursts, has
+     to fit in this share of a second, drawing at least this many pictures in it. The timing is set for the worst
+     seed and errs on the slow side, so a device that only just fits still keeps up. */
+  const KEEP_UP = 1, BURST_DRAWS = 15;
+  /* The picture on screen this many seconds behind the sound for LATE_FOR ms, or twice as far at all: the device
+     can't keep up, and the video takes over. */
+  const LATE = 0.15, LATE_FOR = 400;
+  /* Taking over in the middle, the video is asked for its frame this far ahead of the sound, and is started this
+     much before the sound gets there, for the time it takes to get going. Ready only after the sound has passed,
+     it runs up to CATCH_UP times as fast until it is level. Past HAND_WAIT ms it takes over anyway. */
+  const HAND_LEAD = 0.8, START_LAG = 0.04, CATCH_UP = 3, HAND_WAIT = 6000;
   const SOUND_LATE = 3000; /* Running this long with no sound yet, the button says so. */
-  const NARROWEST = 96; /* Columns. Fewer would crowd the patch. */
-  const TALLEST = 112; /* Rows. More than this is mostly dark rock. */
-  const SMALLEST_GRAIN = 1.25; /* CSS pixels. Under this, the world is too small to read. */
+  const NARROWEST = 96 * Q; /* Columns. Fewer would crowd the patch. */
+  const TALLEST = 112 * Q; /* Rows. More than this is mostly dark rock. */
+  const SMALLEST_GRAIN = 1, BIGGEST_GRAIN = 3; /* CSS pixels. Under one the world is too small to read; over three, too coarse. */
+  const MOUSE_GRAIN = 1.5; /* CSS pixels. With a mouse, the screen is far enough off that smaller is only taken if nothing else fits. */
+  const WIDE_FROM = 0.8, WIDE_TO = 1.4; /* The share of the film's width a grain should show. */
   const STEP = 1 / 60;
 
   const motion = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
@@ -239,25 +257,35 @@
     let keysUp = false, keyRows = 1, air = 0;
     let chrome = barRows + tickRows + paneRows + keyRows + capRows;
 
-    /* Grains: a whole number of device pixels, as many columns of the film as fit, and no smaller than three
-       CSS pixels where that fits on a phone. */
-    const wDev = fw * dpr;
+    /* Grains: a whole number of device pixels, from one to three CSS pixels, showing as near the film's own width as
+       will go, the smaller grain on a tie. A grain that shows between WIDE_FROM and WIDE_TO of the film's width comes
+       before one that doesn't, and with a mouse, one of MOUSE_GRAIN or more before either. A screen too narrow for
+       that keeps to the action, at one CSS pixel. */
+    const wDev = fw * dpr, mouse = !coarse();
     const rowsOf = (k, n) => Math.ceil(n * (k / dpr) / lh - 0.001);
-    let K = Math.max(1, Math.floor(wDev / VW));
-    const small = K / dpr < 3;
-    if (small) K = Math.max(K, Math.min(Math.ceil(3 * dpr - 1e-6), Math.floor(wDev / NARROWEST)));
-    let need = small ? 64 : VH;
+    const most = Math.max(1, Math.floor(BIGGEST_GRAIN * dpr + 1e-6));
+    let K = 0, best = Infinity;
+    for (let k = 1; k <= most; k++) {
+      const g = k / dpr, across = wDev / k;
+      if (g < SMALLEST_GRAIN - 1e-6 || across < NARROWEST) continue;
+      const off = Math.abs(Math.log(across / VW)) + (across >= VW * WIDE_FROM && across <= VW * WIDE_TO ? 0 : 10) +
+        (mouse && g < MOUSE_GRAIN - 1e-6 ? 20 : 0);
+      if (off < best - 1e-9) { best = off; K = k; }
+    }
+    if (!K) K = Math.min(most, Math.max(1, Math.ceil(SMALLEST_GRAIN * dpr - 1e-6)));
+    /* The picture takes the rows the film box has always had, as long as that leaves it this many cells. */
+    let need = 48 * Q;
     let picRows, picH;
     if (full) {
-      if (canLift && filmH - chrome * lh < need * 3) { keysUp = true; keyRows = 0; chrome--; }
+      if (canLift && filmH - chrome * lh < need * SMALLEST_GRAIN) { keysUp = true; keyRows = 0; chrome--; }
       if (filmH - (chrome + 1) * lh >= need * (K / dpr)) { air = 1; chrome++; }
       picH = Math.max(lh, filmH - chrome * lh);
-      /* A tall screen: bigger grains, rather than a long way down through dark rock. */
-      K = Math.max(K, Math.min(Math.ceil(picH * dpr / TALLEST), Math.floor(wDev / NARROWEST)));
+      /* A tall screen: bigger grains, rather than a long way down through dark rock, but never over three CSS pixels. */
+      K = Math.max(K, Math.min(Math.ceil(picH * dpr / TALLEST), Math.floor(wDev / NARROWEST), most));
       K = Math.max(1, Math.min(K, Math.floor(picH * dpr / need)));
       picRows = picH / lh;
     } else {
-      /* Whole rows of the page, enough for the film's 66, and the rows the film box has always had if more. */
+      /* The rows the film box has always had, or whole rows of the page enough for `need` cells if that is more. */
       const tier = cssNumber('--fluid') === 1 ? 0 : cssNumber('--film-rows') - chrome;
       /* The rows the window has, less the control row. */
       const fits = Math.floor(windowH / lh) - 1;
@@ -268,7 +296,7 @@
            Very short, the picture keeps to the action rather than go on shrinking. If that would still be too
            small to read, the grains stay as they were: smaller would buy nothing. */
         const rows = Math.max(1, fits - chrome);
-        need = Math.floor(rows * lh / 64) >= 2 ? 64 : 48;
+        need = rows * lh / (64 * Q) >= SMALLEST_GRAIN ? 64 * Q : 48 * Q;
         const k = Math.min(K, Math.floor(rows * lh * dpr / need));
         if (k / dpr >= SMALLEST_GRAIN) {
           K = k;
@@ -286,7 +314,7 @@
     const gridCols = Math.ceil((wDev + 1) / K);
     const gridRows = Math.ceil(((picH + (stillOn ? tickRows * lh : 0)) * dpr + 1) / K);
     /* The pane's strip and the keys are empty at the end. Where the picture is short of rows, the word uses them. */
-    const spare = (!allKeys || need < VH) && !stillOn ? Math.ceil((paneRows + keyRows) * lh * dpr / K) : 0;
+    const spare = (!allKeys || gridRows < VH) && !stillOn ? Math.ceil((paneRows + keyRows) * lh * dpr / K) : 0;
 
     /* A label is a whole number of grains tall and wide, so it sits in the picture like a cut in the rock. */
     const labelPad = Math.ceil(3 / g) * g;
@@ -440,8 +468,8 @@
     }
     if (up !== raised) { raised = up; reelEl.classList.toggle('banner-up', up); }
 
-    /* A label sits on the film's text row. The bottom of the backing is where the bottom of that row was, so that
-       it stays above what it names. One low in the picture hangs from the row instead, below what it names.
+    /* A label's backing sits with its bottom on the cell row it is given, so that it stays above what it names. One
+       low in the picture hangs from that row instead, below what it names.
        The labels the story names go first. The rest go where they fit, or not at all. */
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < v.labels.length; i++) {
@@ -452,7 +480,7 @@
         /* A line that types stays centred on where it will finish. */
         if (l.center) x = Math.round((W - l.center * cw) / 2 / g) * g - pad;
         const low = l.y > H / g * 0.82;
-        const y = Math.max(0, Math.min(low ? l.y * g : (l.y + 2) * g - h, H - h));
+        const y = Math.max(0, Math.min(low ? l.y * g : l.y * g - h, H - h));
         if (hits(x, y, w, h) && !l.story) { dropped[l.text] = true; continue; }
         freeSpot(x, y, w, h, W, H);
         putLabel(l.text, spotX, spotY, w, h, l.color, l.back);
@@ -573,10 +601,12 @@
     const w = still.naturalWidth, h = still.naturalHeight;
     if (w) {
       /* It goes on upwards as sky and downwards as rock, for as many rows as a tall picture has. */
+      const k = Math.max(1, Math.round(STILL_W / w)), sky = STILL_SKY / k, deep = STILL_DEEP / k;
       const x = -v.cam.x, y = -v.cam.y - STILL_SKY;
-      ctx.drawImage(still, x, y);
-      for (let up = y; up > 0; up -= STILL_SKY) ctx.drawImage(still, 0, 0, w, STILL_SKY, x, up - STILL_SKY, w, STILL_SKY);
-      for (let down = y + h; down < geo.rows; down += STILL_DEEP) ctx.drawImage(still, 0, h - STILL_DEEP, w, STILL_DEEP, x, down, w, STILL_DEEP);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(still, 0, 0, w, h, x, y, w * k, h * k);
+      for (let up = y; up > 0; up -= STILL_SKY) ctx.drawImage(still, 0, 0, w, sky, x, up - STILL_SKY, w * k, STILL_SKY);
+      for (let down = y + h * k; down < geo.rows; down += STILL_DEEP) ctx.drawImage(still, 0, h - deep, w, deep, x, down, w * k, STILL_DEEP);
     } else {
       /* No picture, so nothing to name. */
       v.labels.length = 0;
@@ -587,13 +617,19 @@
 
   /* ---- The clock and the sound ---- */
 
-  let reel = null, loading = false;
+  let reel = null, loading = false, slowWorld = false;
   let wanted = false, started = false, playing = false, ended = false, alive = true;
   let base = 0, baseAt = 0, seenA = -1, seenAt = 0;
   let audio = null, audioLive = false, audioDead = false, soundSeen = false, soundLate = false, userMuted = false, heldForWorld = false;
-  let pressAt = 0, pressTimer = 0, worldTimer = 0, begunAt = 0, raf = 0, lastRaf = 0, behindSince = 0, frameNo = 0;
+  let pressAt = 0, pressTimer = 0, worldTimer = 0, begunAt = 0, raf = 0, lastRaf = 0, lateSince = 0, graceUntil = 0, sinceDraw = 0;
+  /* The film time of the picture last drawn. */
+  let drawnT = 0;
+  /* What a tick and a picture have been costing lately, in ms, and the time between frames. */
+  let tickCost = 0, drawCost = 0, frameGap = STEP * 1000;
   let onScreen = true, dirty = true, hiddenWhilePlaying = false, framed = false, overlay = false;
   let shownSecond = -1;
+  /* Handing over to the video, while it gets ready; and whether there turned out to be no video to hand over to. */
+  let bridging = null, noVideo = false;
 
   function ensureSound() {
     if (audio) return;
@@ -668,7 +704,11 @@
           /* The sound has fallen behind, and grains can't go backwards. Bring the sound here. */
           audio.currentTime = reel.t + 0.03;
           seenA = -1;
-        } else { base += err; t += err; }
+        } else {
+          /* A jump in the sound: the picture jumps with it, and gets a moment to catch up. */
+          base += err; t += err;
+          graceUntil = now + 1000;
+        }
       } else { base += err * 0.08; t += err * 0.08; }
     }
     return t;
@@ -718,12 +758,27 @@
     if (by > 0) window.scrollBy({ top: by, behavior: motion.matches ? 'auto' : 'smooth' });
   }
 
+  /* Whether the spring's burst fits in KEEP_UP of a second at the pace the warm-up timed, at this picture's size. */
+  function keepsUp(pace) {
+    return pace.burst + pace.paint * geo.cols * geo.rows * BURST_DRAWS <= KEEP_UP * 1000;
+  }
+
+  function tooSlow() { slowWorld = true; if (wanted && !started) hand(); }
+
   function ensureWorld() {
     if (reel || loading) return;
     loading = true;
-    const made = Core.load({ seed: Core.pickSeed(Math.random()), slice: 6 });
+    /* Once making the world has taken TOO_SLOW, or the warm-up has timed a device that can't keep up, it is known to
+       be too slow: a press waiting for it goes to the video now, a later press goes straight to it, and the world
+       stops being made. */
+    const made = Core.load({
+      seed: Core.pickSeed(Math.random()), slice: 6,
+      busy: TOO_SLOW, onBusy: safely(tooSlow), size: [geo.cols, geo.rows],
+      keeps: safely((pace) => { if (keepsUp(pace)) return true; tooSlow(); return false; }),
+      stop: () => !alive || slowWorld
+    });
+    /* Loading takes the slowest frames as well, so the film's first run is as quick as the rest. */
     made.then(safely((r) => {
-      r.warm();
       reel = r;
       loading = false;
       tryBegin();
@@ -732,7 +787,9 @@
 
   /* The sound has this long to arrive before the picture goes without it. */
   function tryBegin() {
-    if (!wanted || started || !reel) return;
+    if (!wanted || started) return;
+    if (slowWorld || (reel && (reel.buildMs > TOO_SLOW || reel.slow))) { hand(); return; }
+    if (!reel) return;
     const waited = performance.now() - pressAt;
     const soundReady = audioLive || audioDead || (audio && audio.muted && audio.readyState >= 2);
     if (soundReady || waited >= WAIT_FOR_SOUND) begin();
@@ -763,7 +820,8 @@
     base = audioLive && audio ? audio.currentTime : 0;
     baseAt = performance.now();
     playing = true;
-    behindSince = 0;
+    lateSince = 0;
+    graceUntil = baseAt + 1000;
     if (stillOn) endStill();
     retext();
     draw();
@@ -794,7 +852,8 @@
       /* Back from a pause. */
       baseAt = begunAt = performance.now();
       playing = true;
-      behindSince = 0;
+      lateSince = 0;
+      graceUntil = baseAt + 1000;
       cap.setAttribute('aria-live', 'polite');
       run();
     } else {
@@ -857,6 +916,7 @@
     /* The word sits in the middle of the columns that show, not of the last one, which is partly past the edge. */
     if (v.mode === 'logo') v.cam.x = Math.round((VW - geo.picW / geo.g) / 2);
     reel.paint(image.data, geo.cols, rows, v.cam);
+    drawnT = t;
     ctx.putImageData(image, 0, 0, 0, 0, geo.cols, rows);
     if (open !== geo.open) { geo.open = open; reelEl.classList.toggle('under', open); }
     render(v);
@@ -867,34 +927,53 @@
     raf = 0;
     if (!playing || !alive) return;
     raf = requestAnimationFrame(guardedLoop);
-    frameNo++;
+    sinceDraw++;
     reel.reduced = motion.matches;
     const gap = now - lastRaf;
     lastRaf = now;
+    if (gap > 0 && gap < 100) frameGap += (gap - frameGap) * 0.1;
     const t = clockNow(now);
     const target = Math.min(t, HOLD);
     const before = target - reel.t;
-    const stop = performance.now() + (before > 0.1 ? 24 : 10);
+    /* A tick can take a few milliseconds, so the clock is looked at after every one. Handing over, the picture
+       moves on as it can and leaves the video most of the time to get ready in. */
+    const until = performance.now() + (bridging ? 8 : before > 0.1 ? 24 : 10);
     let ticked = 0;
+    const from = performance.now();
     while (reel.t + STEP / 2 <= target) {
       reel.tick();
       ticked++;
-      if ((ticked & 3) === 0 && performance.now() > stop) break;
+      if (performance.now() > until) break;
     }
+    if (ticked) tickCost += ((performance.now() - from) / ticked - tickCost) * 0.1;
     drawTime(reel.t);
 
     /* Late with the sound, by more than a slow start. The button says so until it arrives. */
     if (!soundSeen && !soundLate && !audioDead && now - begunAt > SOUND_LATE) { soundLate = true; buttons(); }
 
-    /* The device can't keep up: it hands over to the video rather than falling further behind. Only catching up
-       stops the count. A long gap is the machine having slept, and that gets a fresh start. */
     const behind = target - reel.t;
-    if (behind > 1 && gap < 5000) {
-      if (!behindSince) behindSince = now;
-      else if (now - behindSince > 3000) { hand(); return; }
-    } else behindSince = 0;
+    /* Where working out the grains takes most of each frame, as where the spring bursts on a slow device, it draws
+       only every second, third or fourth frame, so that it keeps up with the sound rather than falling behind.
+       Behind anyway, it draws every second frame, or every third if well behind, and spends the time catching up. */
+    const left = frameGap * (0.85 - tickCost * 60 / 1000);
+    const paced = left > 0 ? Math.min(4, Math.max(1, Math.ceil(drawCost / left))) : 4;
+    const every = Math.max(paced, behind > 0.25 ? 3 : behind > 0.05 ? 2 : 1);
+    if (onScreen && (ticked || dirty) && sinceDraw >= every) {
+      const at = performance.now();
+      draw();
+      drawCost += (performance.now() - at - drawCost) * 0.2;
+      sinceDraw = 0;
+    }
 
-    if (onScreen && (ticked || dirty) && !(behind > 0.25 && (frameNo & 1))) draw();
+    /* The device can't keep up: the picture on screen is behind the sound, and it hands over to the video rather than
+       fall further behind. A long gap is the machine having slept or been busy with something else: that gets a
+       second to catch up first. */
+    if (gap > 250) graceUntil = now + 1000;
+    const late = target - (onScreen ? drawnT : reel.t);
+    if (late > LATE && now > graceUntil && !bridging && !noVideo) {
+      if (!lateSince) lateSince = now;
+      if (now - lateSince > LATE_FOR || late > 2 * LATE) { hand(); return; }
+    } else lateSince = 0;
 
     if (t >= T.END || (audio && audio.ended)) {
       /* The end card always lands. Past the last of the world there is nothing left to work out, so the picture
@@ -913,18 +992,129 @@
 
   /* ---- When it can't run ---- */
 
-  function hand() {
+  function hand(broke) {
     if (!alive) return;
-    alive = false;
+    if (bridging) {
+      /* On its way already. If the live film stops meanwhile, its last picture stays up. */
+      if (broke) bridging.broke();
+      return;
+    }
     const was = playing || (wanted && started);
     const at = started ? (ended ? END_CARD : Math.min(playing ? clockNow(performance.now()) : base, END_CARD)) : 0;
-    const muted = !!(audio && userMuted);
+    if (playing && !ended && !noVideo && at < END_CARD - HAND_LEAD && window.SiltFilm) {
+      bridge(broke);
+      return;
+    }
+    stop();
+    swap(at, was, !!(audio && userMuted));
+  }
+
+  function stop() {
+    alive = false;
     playing = false;
     if (raf) cancelAnimationFrame(raf);
+    raf = 0;
     clearTimeout(pressTimer);
     clearTimeout(worldTimer);
+  }
+
+  /* In the middle of the film the video makes its frame a moment ahead ready out of sight, starts from it silently
+     when the sound gets there, and then takes over. Until then the live film plays on with its sound, late as it may
+     be, and every control works as before. If the live film itself has stopped, its last picture stays up with the
+     sound, and a press hands over at once and then does what it says. */
+  function bridge(broke) {
+    const began = performance.now(), now = () => clockNow(performance.now()), to = now() + HAND_LEAD;
+    const sources = Array.prototype.slice.call(video.querySelectorAll('source'));
+    const off = [];
+    let ready = false, starting = false, catching = false, broken = false, done = false, timer = 0;
+    const poll = setInterval(check, 20);
+    function listen(target, type, fn, capture) {
+      target.addEventListener(type, fn, capture);
+      off.push(() => { target.removeEventListener(type, fn, capture); });
+    }
+    function end() {
+      done = true;
+      bridging = null;
+      clearTimeout(timer);
+      clearInterval(poll);
+      off.forEach((f) => { f(); });
+    }
+    function go(play) {
+      if (done) return;
+      end();
+      const at = starting && !video.paused ? video.currentTime : Math.min(now(), END_CARD);
+      const muted = !!(audio && userMuted);
+      video.playbackRate = 1;
+      if (!play) video.pause();
+      stop();
+      swap(at, play, muted);
+    }
+    function check() {
+      if (done) return;
+      const t = now();
+      /* Paused, or the page hidden: the video waits at the same moment. */
+      if (!broken && !playing) { go(false); return; }
+      if (t > END_CARD || performance.now() - began > HAND_WAIT) { go(!audio || audioDead || !audio.paused); return; }
+      if (ready && !starting && t >= to - START_LAG) start();
+      /* Started late, it runs quicker out of sight until it is level with the sound, easing off as it gets there,
+         and takes over once it has plenty of what comes next in hand. */
+      if (catching && !video.paused) {
+        const gap = t - video.currentTime;
+        const rate = Math.round((gap > 0 ? Math.min(CATCH_UP, 1.5 + 5 * gap) : Math.max(0.5, 1 + 5 * gap)) * 20) / 20;
+        if (video.playbackRate !== rate) video.playbackRate = rate;
+        if (Math.abs(gap) < 0.05 && video.readyState >= 4) go(true);
+      }
+    }
+    function start() {
+      if (done || starting) return;
+      starting = true;
+      catching = now() > to + 0.15;
+      const p = video.play();
+      if (p && p.catch) p.catch(() => { go(true); });
+    }
+    /* With nothing to take over with, the live film plays on to the end as well as it can. */
+    function failed(e) {
+      if (e.target !== video && e.target !== sources[sources.length - 1]) return;
+      if (broken) { go(true); return; }
+      noVideo = true;
+      end();
+      video.playbackRate = 1;
+      video.pause();
+      video.hidden = true;
+    }
+    /* A press on the picture pauses, as it did. One on a control goes on to the video's own. */
+    function pressed(e) { go(!(reelEl && reelEl.contains(e.target))); }
+    bridging = {
+      broke() {
+        if (broken) return;
+        broken = true;
+        stop();
+        listen(box, 'click', pressed, true);
+        listen(document, 'visibilitychange', () => { if (document.hidden) go(false); });
+      }
+    };
+    listen(video, 'seeked', () => {
+      if (done || video.seeking || Math.abs(video.currentTime - to) > 0.05) return;
+      ready = true;
+      clearTimeout(timer);
+      timer = setTimeout(check, Math.max(0, (to - START_LAG - now()) * 1000));
+    });
+    listen(video, 'playing', () => { if (starting && !catching) go(true); });
+    listen(video, 'error', failed);
+    sources.forEach((s) => { listen(s, 'error', failed); });
+    if (broke) bridging.broke();
+    /* Under the stage the video can't be seen yet, and it is silent until it takes over. */
+    video.hidden = false;
+    video.muted = true;
+    video.preload = 'auto';
+    video.currentTime = to;
+  }
+
+  function swap(at, was, muted) {
+    /* The one sound gives way to the other at once, before the stage is taken down. */
+    if (audio) audio.pause();
+    video.muted = muted;
     if (audio) {
-      audio.pause();
       audio.removeAttribute('src');
       try { audio.load(); } catch (e) { /* Gone either way. */ }
     }
@@ -964,7 +1154,7 @@
       } catch (e) {
         /* Quiet for the viewer, who gets the video. Not for anyone looking. */
         if (window.console && console.warn) console.warn('Silt: the live film stopped, so the video takes over.', e);
-        hand();
+        hand(true);
         return undefined;
       }
     };

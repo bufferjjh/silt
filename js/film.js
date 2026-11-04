@@ -203,8 +203,11 @@
     if (muted) v.muted = true;
     if (at) {
       v.preload = 'auto';
-      v.currentTime = at;
+      /* The stage may have had the video ready at that moment already. */
+      if (Math.abs(v.currentTime - at) > 0.1) v.currentTime = at;
     }
+    /* Out of sight, while the stage was handing over, it may have found already that there is no film. */
+    if (v.error || v.networkState === v.NETWORK_NO_SOURCE) fail();
     if (playing) start();
 
     buttons();
