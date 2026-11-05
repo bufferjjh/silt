@@ -107,6 +107,17 @@
   function even(text, width) {
     const n = wrap(text, width).length;
     if (n === 1) return wrap(text, width);
+    /* In two lines, a line of parts breaks after a '·', the most even way that fits. */
+    if (n === 2 && text.indexOf(' · ') > 0) {
+      let best = null;
+      for (let k = text.indexOf(' · '); k > 0; k = text.indexOf(' · ', k + 1)) {
+        const a = k + 2, b = k + 3;
+        if (a > width || text.length - b > width) continue;
+        const d = Math.abs(a - (text.length - b));
+        if (!best || d < best[0]) best = [d, a, b];
+      }
+      if (best) return [{ at: 0, end: best[1], pad: 0 }, { at: best[2], end: text.length, pad: 0 }];
+    }
     let w = width;
     while (w > 8 && wrap(text, w - 1).length === n) w--;
     return wrap(text, w);

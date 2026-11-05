@@ -93,6 +93,7 @@
   function rgb(h) { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
   function pk(c) { return (0xff000000 | (c[2] << 16) | (c[1] << 8) | c[0]) >>> 0; }
   const BAYER = new Uint8Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]);
+  const BLACK = pk(rgb('100d0b'));
 
   /* The creature. Its sprites, as rows of keys: the close-up's 24 and the 1:1's 12. */
   const SPRITES = {"spec":{"palette":{"o":"#6A4934","k":"#281C17","l":"#F7E6C4","p":"#DAC29C","s":"#B49A78","h":"#D2AC60","g":"#FFE09A"},"s24":["........................","........................","........................",".ollllllllllllllllllllo.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppgkppppppgkppppso.",".opppppkkppppppkkppppso.",".opppppkkppppppkkppppso.",".opppppppppppppppppppso.","..olppppppppppppppppso..","..oplpppppppppppppppso..","...osssssssssssssssso...","....osssssssssssssso....",".....osssssssssssso.....","......oooooooooooo......","..............s.........","...............s........","..............hhh.......",".............hgggh......",".............hhghh......","..............hhh.......","........................"],"idle":[["........................","........................","........................",".ollllllllllllllllllllo.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppgkppppppgkppppso.",".opppppkkppppppkkppppso.",".opppppkkppppppkkppppso.",".opppppppppppppppppppso.","..olppppppppppppppppso..","..oplpppppppppppppppso..","...osssssssssssssssso...","....osssssssssssssso....",".....osssssssssssso.....","......oooooooooooo......","..............s.........","...............s........","..............hhh.......",".............hgggh......",".............hhghh......","..............hhh.......","........................"],["........................","........................",".ollllllllllllllllllllo.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppppppppppppppppso.",".olppppgkppppppgkppppso.",".opppppkkppppppkkppppso.",".opppppkkppppppkkppppso.",".opppppppppppppppppppso.","..olppppppppppppppppso..","..oplpppppppppppppppso..","...osssssssssssssssso...","....osssssssssssssso....",".....osssssssssssso.....","......oooooooooooo......","..............s.........","...............s........","...............s........","..............hhh.......",".............hgggh......",".............hhghh......","..............hhh.......","........................"],["........................","........................","........................","........................","ollllllllllllllllllllllo","olppppppppppppppppppppso","olppppppppppppppppppppso","olppppppppppppppppppppso","olpppppgkppppppgkpppppso","oppppppkkppppppkkpppppso","oppppppkkppppppkkpppppso",".olppppppppppppppppppso.",".oplpppppppppppppppppso.","..opppppppppppppppppso..","...osssssssssssssssso...","....osssssssssssssso....",".....oooooooooooooo.....","..............s.........","...............s........","..............hhh.......",".............hgggh......",".............hhghh......","..............hhh.......","........................"]]},"s12":{"s12":["............","ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"],"idle12":[["............","ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"],["ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......s....",".......hh...",".......hg...","............"],["............","............","ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..",".......s....",".......hh...",".......hg...","............"]],"blink12":["............","ollllllllllo","olppppppppso","olppppppppso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hg...",".......hg...","............"],"lean12":[["olll........","olppllll....","olpppppplllo","opppgkppppso",".oppkkppgkso","..osppppkkso","...osssspso.","....ssssoo..",".......s....","......s.....","......hh....","......hg...."],["........lllo","....llllppso","olllppppppso","olppppgkppso","olgkppkkpso.","opkkppppso..",".oppsssso...","..oossss....",".......s....","........s...","........hh..","........hg.."]],"glance12":[["............","ollllllllllo","olppppppppso","olgkppgkppso","opkkppkkppso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"],["............","ollllllllllo","olppppppppso","olppgkppgkso","opppkkppkkso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"]],"inspect12":[["............","........lllo","....llllppso","olllppppppso","olppppppppso","olppppgkpso.","opgkppppso..",".oppsssso...","..oossss....",".......s....",".......hh...",".......hg..."],["............","olll........","olppllll....","olpppppplllo","opppppppppso",".oppgkppppso","..osppppgkso","...osssspso.","....ssssoo..",".......s....",".......hh...",".......hg..."]],"discover12":[["............","ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opkkppkkso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"],["ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opkkppkkso.","..osssssso..","...osssso...",".......s....",".......gg...",".......gg...","............","............"],["............","ollllllllllo","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....","........hh..","........hg..","............"]],"construct12":[["ollllllllllo","olppppppppso","olppppppppso","opppgkppgkso",".opppppppso.","..osssssso..","...osssso...",".......s....","........s...","........hh..","........hg..","............"],["ollllllllllo","olppppppppso","olppppppppso","opppgkppgkso",".opppppppso.","..osssssso..","...osssso...",".......s....","........s...","........s...","........gg..","........gg.."]],"rest12":[["............","ollllllllllo","olppppppppso","olppppppppso","oppgkppgkpso",".opppppppso.","..osssssso..","...osssso...",".......s....","........s...","........hh..","........hg.."],["............","............","ollllllllllo","olppppppppso","olppppppppso","oppgkppgkpso",".opppppppso.","..osssssso..","...osssso...",".......s....","........hh..","........hg.."]]}};
@@ -189,7 +190,7 @@
       const inBowl = new Set(hollow);
       bedCells = [];
       for (let x = hc - hw - 1; x <= hc + hw + 1; x++) {
-        for (let y = pond.top; y < pond.top + depth + 3; y++) {
+        for (let y = pond.top + 1; y < pond.top + depth + 3; y++) {
           const i = idx1(x, y);
           if (inBowl.has(i)) continue;
           if (inBowl.has(i - w.W) || inBowl.has(i - 1) || inBowl.has(i + 1) || inBowl.has(i - 2 * w.W) || inBowl.has(i - 2) || inBowl.has(i + 2)) bedCells.push(i);
@@ -206,7 +207,12 @@
       branchCells = []; plankCells = [];
       for (let x = G.branch[0]; x <= G.branch[1]; x++) branchCells.push(idx1(x, surfY[x] - 1));
       /* The plank lies across the hollow in front of the cut, so it is drawn over the ground and stops no rain. */
-      for (let x = hc - hw - 4; x <= hc + hw + 4; x++) plankCells.push([x, Math.min(surfY[hc - hw - 4], surfY[hc + hw + 4]) - 1]);
+      /* One branch, resting on both banks and sagging a little between. */
+      const pL = hc - hw - 4, pR = hc + hw + 4, yL = surfY[pL] - 1, yR = surfY[pR] - 1;
+      for (let x = pL; x <= pR; x++) {
+        const u = (x - pL) / (pR - pL);
+        plankCells.push([x, Math.round(yL + (yR - yL) * u + 1.6 * Math.sin(Math.PI * u) + (((x * 7) % 11) === 3 ? -1 : 0) * Math.sin(Math.PI * u))]);
+      }
     }
 
     /* ---- The worlds, made, bare, and made again ---- */
@@ -234,7 +240,7 @@
     /* The place grown, for every seed the same; and Exhibit B's frozen frame. Made while the film plays. */
     function* later() {
       const p = yield* build(U_1, { tags: true }, W1.GW, W1.GH);
-      for (let k = 0; k < SETTLE; k += 10) { p.settle(10); yield; }
+      for (let k = 0; k < SETTLE; k += 3) { p.settle(3); yield; }
       p.begin(FIXED);
       p.ctl.creature = false; p.ctl.stars = false; p.ctl.lights = 0; p.ctl.flies = false;
       W1P = p;
@@ -242,7 +248,7 @@
       /* As wide as the widest picture seen in play: 576 (Exhibit B's own) unless the picture is wider than 577. */
       const wide = Math.max(seen.cols, size ? size[0] : 0), tall = Math.max(seen.rows, size ? size[1] : 0);
       const f = yield* build(U_F, {}, wide > 577 ? wide : 576, Math.max(324, tall));
-      for (let k = 0; k < SETTLE; k += 10) { f.settle(10); yield; }
+      for (let k = 0; k < SETTLE; k += 3) { f.settle(3); yield; }
       f.begin(PLATE_BEGIN);
       f.render();
       WF = f;
@@ -326,7 +332,7 @@
       if (t < T_LAPSE) {
         const ctl = W1.ctl;
         const r = rainAt(t);
-        ctl.rain = r > 0 ? { i: r, x0: G.hc - 3 * G.hw, x1: G.hc + 3 * G.hw, rate: 9 } : null;
+        ctl.rain = r > 0 ? { i: r, x0: G.hc - 2 * G.hw, x1: G.hc + 2 * G.hw, rate: 4 } : null;
         ctl.seep = seepAt(t);
         ctl.spill = spillAt(t);
         ctl.machine = machineAt(t);
@@ -340,8 +346,8 @@
         W1.render();
       }
       if (t >= T_LAPSE && W1P) {
-        W1P.ctl.flies = t >= beat(59.5);
-        W1P.ctl.stars = t >= beat(61.5);
+        W1P.ctl.flies = t >= beat(59.5) && !reel.reduced;
+        W1P.ctl.stars = t >= beat(61.5) && !reel.reduced;
         W1P.ctl.lights = smooth(T_GOLD, T_DUSK, t);
         if (!S.home && t >= T_HOME) { S.home = true; W1P.ctl.creature = true; }
         if (t < T_PULLED) W1P.update();
@@ -357,6 +363,9 @@
         const i = hollow[S.dug];
         w.restore(i);
         mat[i] = 0; col[i] = 0;
+        /* In shadow, inside the hollow. */
+        const b = w.base[i];
+        w.base[i] = (0xff000000 | ((((b >> 16) & 255) * 0.5) << 16) | ((((b >> 8) & 255) * 0.5) << 8) | ((b & 255) * 0.5)) >>> 0;
         if (S.dug % 9 === 0) {
           const x = (i % w.W) - 1, side = S.dug % 18 === 0 ? -1 : 1;
           const rx = G.hc + side * (G.hw + 3 + (S.dug % 7)), ry = surfY[clamp(rx, 0, G.GW - 1)] - 3;
@@ -405,22 +414,26 @@
     function sprout(k) {
       const w = W1, x = G.sap, y = surfY[x] - 1;
       const put = (dx, dy, m, c) => { const i = idx1(x + dx, y + dy); if (w.mat[i] === 0) { w.mat[i] = m; w.col[i] = c; } };
-      put(0, 0, 15, LEAF[1]);
-      if (k) { put(0, -1, 15, LEAF[1]); put(-1, -2, 16, LEAF[2]); put(1, -2, 16, LEAF[2]); }
+      /* A seedling: a stem and a pair of leaves, then taller with a second pair. */
+      put(0, 0, 15, LEAF[0]); put(0, -1, 15, LEAF[1]); put(-1, -2, 16, LEAF[2]); put(1, -2, 16, LEAF[2]); put(-2, -2, 16, LEAF[1]); put(2, -2, 16, LEAF[1]);
+      if (k) { put(0, -2, 15, LEAF[1]); put(0, -3, 15, LEAF[1]); put(-1, -4, 16, LEAF[2]); put(1, -4, 16, LEAF[2]); put(-2, -5, 16, LEAF[2]); put(2, -5, 16, LEAF[2]); put(0, -4, 15, LEAF[1]); }
     }
 
-    function reset(s) {
+    function reset(s) { finish(resetting(s)); }
+    /* The same, a slice at a time, for the loader. */
+    function* resetting(s) {
       seed = s || 1;
       n = 0;
       drawn1 = -1; drawnP = -1;
       Object.keys(S).forEach((k) => { S[k] = typeof S[k] === 'boolean' ? false : 0; });
       if (!alive) return;
-      finish(makeW1(W1.GW, W1.GH));
+      yield* makeW1(W1.GW, W1.GH);
       W1P = null;
-      if (!WF) bg = later();
+      /* Exhibit B's frame is made again only if a picture since has been wider than it. */
+      if (!WF || (seen.cols > WF.GW && seen.cols > 577)) bg = later();
       else bg = (function* () {
         const p = yield* build(U_1, { tags: true }, W1.GW, W1.GH);
-        for (let k = 0; k < SETTLE; k += 10) { p.settle(10); yield; }
+        for (let k = 0; k < SETTLE; k += 3) { p.settle(3); yield; }
         p.begin(FIXED);
         p.ctl.creature = false; p.ctl.stars = false; p.ctl.lights = 0; p.ctl.flies = false;
         W1P = p;
@@ -431,7 +444,7 @@
 
     /* Its grid's top left in the film's world, and its pose. Keyed: time, x, y (both as offsets from places), pose. */
     function you(t) {
-      const g = G || { hc: 210, hw: 24, sap: 354, sb: 126, hover: { x: 504, y: 109 }, well: { ropeX: 463, ringTop: 115 }, hub: [413, 260] };
+      const g = G || { hc: 210, hw: 24, sap: 334, sb: 126, hover: { x: 504, y: 109 }, well: { ropeX: 462, ringTop: 115 }, hub: [410, 260] };
       const air = (x) => (surfY ? surfY[clamp(Math.round(x), 0, surfY.length - 1)] : g.sb) - 14;
       const keys = [
         [0, g.hc + 28, air(g.hc + 34), 'idle'], [T_SEED, g.hc + 28, air(g.hc + 34), 'look'],
@@ -443,7 +456,8 @@
         [T_CLAY, g.hc + g.hw + 8, air(g.hc + g.hw + 10), 'discover'], [beat(23), g.hc + g.hw + 8, air(g.hc + g.hw + 10), 'idle'],
         [T_SPROUT, g.sap - 16, air(g.sap - 10), 'look'], [beat(28), g.well.ropeX - 6, air(g.well.ropeX) - 4, 'move'],
         [T_SHAFT, g.well.ropeX - 6, air(g.well.ropeX) - 2, 'shaft'], [T_BREAK, g.well.ropeX - 6, air(g.well.ropeX) - 2, 'discover'],
-        [T_IN0, g.well.ropeX - 6, air(g.well.ropeX) - 2, 'build'], [T_OUT, g.well.ropeX - 6, air(g.well.ropeX) - 2, 'build'],
+        /* It goes down to the work: in close, it hovers in a niche it cut by the wheel, and comes back up. */
+        [T_IN, g.hub[0] + 7, g.hub[1] - 13, 'build'], [T_OUT0, g.well.ropeX - 6, air(g.well.ropeX) - 2, 'look'],
         [T_LOOP, g.well.ropeX + 10, air(g.well.ropeX + 16) - 2, 'look'], [T_BED, g.hover.x - 20, g.hover.y + 1, 'plant'],
         [beat(51.5), g.hover.x - 20, g.hover.y, 'idle'], [beat(55), g.hover.x - 60, g.hover.y - 6, 'move'],
         [beat(58), g.hover.x - 10, g.hover.y - 2, 'look'], [T_HOME - 0.35, g.hover.x, g.hover.y, 'move'], [T_HOME, g.hover.x, g.hover.y, 'home']
@@ -461,18 +475,23 @@
     /* Where the picture is, for this time and size: a view ('C' the close-up, 'W' the film's world, 'F' Exhibit B),
        its top left in that view's grains, and maybe a second picture it is dissolving to. */
     function camAt(t, cols, rows) {
-      const g = G || { hc: 210, hw: 24, sap: 354, sb: 126, hub: [413, 260], hover: { x: 504, y: 109 }, GW: 691, GH: 389, well: { ropeX: 463 } };
+      const g = G || { hc: 210, hw: 24, sap: 334, sb: 126, hub: [410, 260], hover: { x: 504, y: 109 }, GW: 691, GH: 389, well: { ropeX: 462 } };
       const y1 = you(t), red = reel.reduced;
       const fitX = (cx, gw, focus, m) => {
         let x = Math.round(cx - cols / 2);
         if (focus !== undefined) x = clamp(x, Math.round(focus - cols + m), Math.round(focus - m));
         return gw >= cols ? clamp(x, 0, gw - cols) : Math.round((gw - cols) / 2);
       };
-      const close = () => ({ v: 'C', x: fitX((g.hc + g.sap) + 40, g.GW * 2, 2 * y1.x + 12, 40), y: Math.round(2 * g.sb - rows * 0.46) });
-      const wide = (low) => ({ v: 'W', x: fitX(346, g.GW, y1.x + 6, 30), y: Math.round(low * 58 + 36) });
+      const wide = (low, tt) => ({ v: 'W', x: fitX(346, g.GW, you(tt === undefined ? t : tt).x + 6, 30), y: Math.round(low * 58 + 36) });
+      /* The close-ups are lined up on the wide view: the hollow (and the wheel) sit where they sit at 1:1, so a
+         dissolve between the two scales grows about them. */
+      const w0 = wide(0, T_ONE);
+      const close = () => ({ v: 'C', x: g.hc + w0.x, y: g.sb + w0.y });
       const tilt = (a, b, t0, t1) => red ? (t < (t0 + t1) / 2 ? a : b) : a + (b - a) * smooth(t0, t1, t);
-      const push = () => ({ v: 'C', x: fitX(2 * g.hub[0] + 30, g.GW * 2), y: Math.round(2 * g.hub[1] - rows * 0.5) });
-      const final = () => ({ v: 'F', x: cols >= 577 ? 0 : clamp(Math.round(376 - cols / 2), 0, 576 - cols), y: 0 });
+      const push = () => { const wl = wide(1, T_IN); return { v: 'C', x: g.hub[0] + wl.x, y: g.hub[1] + wl.y }; };
+      /* On a phone the last frame is a band of the same place, framed on the cabin, the well and the water below it,
+         low enough to hold the glowing stone whole. */
+      const final = () => ({ v: 'F', x: cols >= 577 ? 0 : clamp(Math.round(376 - cols / 2), 0, 576 - cols), y: cols < 400 ? 12 : 0 });
       const mix = (a, b, t0, t1) => {
         const u = red ? (t >= t0 ? 1 : 0) : lin(t0, t1, t);
         if (u <= 0) return a;
@@ -480,13 +499,15 @@
         a.to = b; a.a = u; return a;
       };
       if (t < T_ONE0) return close();
-      if (t < T_ONE) return mix(close(), wide(0), T_ONE0, T_ONE);
+      if (t < T_ONE - BEAT * 0.6) return close();
+      if (t < T_ONE) return mix(close(), wide(0), T_ONE - BEAT * 0.6, T_ONE);
       let low = t < T_TILT ? 0 : t < T_LAPSE ? tilt(0, 1, T_TILT, T_LOW) : tilt(1, 0, T_UP0, T_UP1);
       const w = wide(low);
       w.y = Math.round(36 + low * 58);
-      if (t >= T_IN0 && t < T_IN) return mix(w, push(), T_IN0, T_IN);
+      const half = BEAT * 0.6;
+      if (t >= T_IN - half && t < T_IN) return mix(w, push(), T_IN - half, T_IN);
       if (t >= T_IN && t < T_OUT0) return push();
-      if (t >= T_OUT0 && t < T_OUT) return mix(push(), w, T_OUT0, T_OUT);
+      if (t >= T_OUT0 && t < T_OUT0 + half) return mix(push(), w, T_OUT0, T_OUT0 + half);
       if (t < T_PULL) return w;
       if (t < T_PULLED) return mix(w, final(), T_PULL, T_PULLED);
       return final();
@@ -513,7 +534,7 @@
       if (t >= T_ENTER && t < T_PULLED) v.ticker = { left: 'day ' + dayAt(t, reel.reduced), leftColor: FG, right: '', rightColor: DIM };
       if (t >= T_ENTER && t < T_PULL + BEAT) {
         let one = '';
-        if (t >= T_DRY && t < beat(27.5)) one = 'inspect · moisture';
+        if (t >= T_DRY && t < T_LOW) one = 'inspect · moisture';
         else if (t >= T_FLOW && t < T_FLOW1) one = 'inspect · flow';
         v.pane = { one, oneColor: LANTERN, two: '', twoColor: DIM, key: keyAt(t) };
       }
@@ -526,9 +547,10 @@
       }
       if (t >= T_WORDS) v.end = { one: '', oneColor: BRIGHT, two: 'Concept render · in development · working title', twoColor: COLORS.endTwo };
       if (t >= T_TAG) {
-        /* The tagline sits over the frame, on plain rock at its foot. */
-        const cx = Math.round(cols / 2), y = Math.min(rows - 3, 276 - v.cam.y);
-        v.labels.push({ x: cx, y, text: TAGLINE, color: BRIGHT, back: null, story: true, center: TAGLINE.length });
+        /* The tagline sits over the frame, on plain rock at its foot; on a phone, high in the sky, clear of the well,
+           on a dark band so the moon behind it doesn't matter. */
+        const phone = cols < 400, cx = Math.round(cols / 2), y = phone ? 18 : Math.min(rows - 16, 268 - v.cam.y);
+        v.labels.push({ x: cx, y, text: TAGLINE, color: BRIGHT, back: phone ? BACK : null, story: true, center: TAGLINE.length });
       }
       /* "you", over the creature, at the start and at the first wide moment. */
       if ((t >= T_UP && t < beat(4.5)) || (t >= T_ONE && t < beat(20.5))) {
@@ -541,7 +563,7 @@
       if (t >= T_PLANT && t < beat(7.5)) return 'p';
       if (t >= T_DIG && t < T_DUG) return 'd';
       if (t >= T_BRANCH && t < T_RAIN) return 'b';
-      if (t >= T_DRY && t < beat(27.5)) return 'i';
+      if (t >= T_DRY && t < T_LOW) return 'i';
       if (t >= T_SHAFT && t < T_BREAK) return 'd';
       if (t >= T_IN0 && t < T_OUT0) return 'b';
       if (t >= beat(47) && t < T_LOOP) return 'b';
@@ -565,7 +587,7 @@
     function paint(rgba, cols, rows, cam) {
       const out = new Uint32Array(rgba.buffer, rgba.byteOffset, cols * rows);
       const t = cam.t !== undefined ? cam.t : n / 60;
-      if (!alive) { out.fill(pk(rgb('100d0b'))); return; }
+      if (!alive) { out.fill(BLACK); return; }
       if (A.length < cols * rows) { A = new Uint32Array(cols * rows); B = new Uint32Array(cols * rows); }
       picture(A, cols, rows, cam, t);
       if (cam.to) {
@@ -579,11 +601,7 @@
       /* Up from black at the start. */
       if (t < T_UP) {
         const f = t < T_ENTER ? 0 : (Math.floor((t - T_ENTER) / ((T_UP - T_ENTER) / 4)) + 1) / 5;
-        const bk = rgb('100d0b');
-        for (let o = 0; o < cols * rows; o++) {
-          const c = out[o];
-          out[o] = pk([bk[0] + ((c & 255) - bk[0]) * f, bk[1] + (((c >> 8) & 255) - bk[1]) * f, bk[2] + (((c >> 16) & 255) - bk[2]) * f].map((q) => q | 0));
-        }
+        for (let o = 0; o < cols * rows; o++) out[o] = blend(BLACK, out[o] & 255, (out[o] >> 8) & 255, (out[o] >> 16) & 255, f);
       }
     }
 
@@ -606,31 +624,32 @@
       if (lapse && drawnP !== n) { W1P.render(); drawnP = n; }
       const day = lapse ? dayAt(t, reel.reduced) : 0;
       const w1 = W1.out, wp = lapse ? W1P.out : null;
-      const src = (g) => (wp && dates[gIdx(g)] <= day ? wp[g] : w1[g]);
-      const GW = W1.GW, GH = W1.GH;
-      const sky = (lapse ? W1P : W1).sky, mat = (lapse ? W1P : W1).mat, wW = W1.W;
+      const GW = W1.GW, GH = W1.GH, wW = W1.W;
       const dn = dayness(t), rain = W1.ctl.rain ? W1.ctl.rain.i : 0;
       const top = mixc(DAY_SKY.top, GOLD_SKY.top, smooth(T_GOLD - BEAT, T_DUSK, t)), hor = mixc(DAY_SKY.hor, GOLD_SKY.hor, smooth(T_GOLD - BEAT, T_DUSK, t));
       const topR = mixc(top, RAIN_SKY.top, rain * 0.8), horR = mixc(hor, RAIN_SKY.hor, rain * 0.8);
       const lift = 1 + 0.1 * dn - 0.12 * rain;
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          let gx, gy, c, fine = -1;
+          let gx, gy, c, fine = -1, from = W1;
           if (view === 'C') {
             const cx = cam.x + x, cy = cam.y + y;
             gx = cx >> 1; gy = cy >> 1;
-            if (cx < 0 || cy < 0 || gx >= GW || gy >= GH) { dst[y * cols + x] = pk(rgb('100d0b')); continue; }
+            if (cx < 0 || cy < 0 || gx >= GW || gy >= GH) { dst[y * cols + x] = BLACK; continue; }
             const g = gy * GW + gx;
             c = w1[g];
             if (c === bareOut[g] && cx < WC.GW && cy < WC.GH) fine = cOut[cy * WC.GW + cx];
           } else {
             gx = cam.x + x; gy = cam.y + y;
-            if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) { dst[y * cols + x] = pk(rgb('100d0b')); continue; }
-            c = src(gy * GW + gx);
+            if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) { dst[y * cols + x] = BLACK; continue; }
+            const g = gy * GW + gx;
+            /* Once the days pass, a grain whose day has come is the grown place's; the rest is the film's world. */
+            if (wp && dates[gIdx(g)] <= day) { c = wp[g]; from = W1P; } else c = w1[g];
           }
           if (fine >= 0) c = fine;
           const i = (gy + 1) * wW + gx + 1;
-          if (dn > 0 && mat[i] === 0 && sky[i] === 1 && (c === (lapse ? W1P : W1).base[i] || fine >= 0)) {
+          /* The sky is judged in the world the grain was drawn from. */
+          if (dn > 0 && from.mat[i] === 0 && from.sky[i] === 1 && (c === from.base[i] || fine >= 0)) {
             /* Afternoon sky over Exhibit B's dusk. */
             const f = clamp(gy / Math.max(1, G.sb), 0, 1);
             const r = topR[0] + (horR[0] - topR[0]) * f, gg = topR[1] + (horR[1] - topR[1]) * f, b = topR[2] + (horR[2] - topR[2]) * f;
@@ -669,7 +688,7 @@
       const cell = (x, y, c) => { if (x >= 0 && y >= 0 && x < cols && y < rows) dst[y * cols + x] = c; };
       /* The moisture view: each grain of ground tinted by the water it holds, and the damp's way down to the stone and
          along it to the water under the beds. */
-      const mo = t >= T_DRY && t < beat(27.5) ? Math.min(1, (t - T_DRY) / 0.3, (beat(27.5) - t) / 0.3) : 0;
+      const mo = t >= T_DRY && t < T_LOW ? Math.min(1, (t - T_DRY) / 0.3, (T_LOW - t) / 0.3) : 0;
       if (mo > 0 && cam.v === 'W') {
         const w = W1, GW = w.GW;
         for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
@@ -709,6 +728,8 @@
         const a = W1.machine ? W1.machine.angle : 0;
         const dark = pk(rgb('1f1d1c'));
         for (let y = -R - 3; y <= R + 3; y++) for (let x = -R - 3; x <= R + 3; x++) if (x * x + y * y <= (R + 2.5) * (R + 2.5)) cell(hx + x, hy + y, dark);
+        /* And room above it, where the creature works. */
+        for (let y = -32; y < -R; y++) for (let x = 6; x <= 46; x++) { const u = (x - 26) / 21, q = (y + 17) / 16; if (u * u + q * q <= 1) cell(hx + x, hy + y, dark); }
         if (W1.ctl.machine >= 2) {
           const dx = 2 * m.drum[0] + 1 - cam.x, dy = 2 * m.drum[1] + 1 - cam.y, nn = Math.max(Math.abs(dx - hx), Math.abs(dy - hy));
           for (let q = 0; q <= nn; q++) cell(Math.round(hx + (dx - hx) * q / nn), Math.round(hy + (dy - hy) * q / nn), ((q + Math.floor(a * R)) % 8) < 1 ? WOOD[2] : CPAL.s);
@@ -721,15 +742,6 @@
         }
         for (let s = 0; s < 12 * R; s++) { const th = s * Math.PI * 2 / (12 * R); cell(Math.round(hx + Math.cos(th) * R), Math.round(hy + Math.sin(th) * R), WOOD[3]); }
         for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) cell(hx + x, hy + y, x || y ? WOOD[1] : WOOD[3]);
-        if (t < T_WHEEL) {
-          /* The line, down the shaft and across to the hub, its bead at the work. */
-          const sx = 2 * G.well.ropeX - cam.x, dy2 = 2 * m.drum[1] - cam.y;
-          for (let y = 0; y <= dy2; y++) cell(sx, y, CPAL.s);
-          const nn = Math.max(Math.abs(sx - hx), Math.abs(dy2 - hy));
-          for (let q = 0; q <= nn; q++) cell(Math.round(sx + (hx - sx) * q / nn), Math.round(dy2 + (hy - dy2) * q / nn), CPAL.s);
-          const bb = (Math.floor(t * 4) & 1) === 0 ? BEAD24B : BEAD24;
-          for (let r = 0; r < bb.length; r++) for (let q = 0; q < bb[r].length; q++) if (bb[r][q] !== '.') cell(hx - 2 + q, hy - 6 + r, CPAL[bb[r][q]]);
-        }
       }
       /* The branch, carried under the bead. */
       const y1 = you(t);
@@ -775,14 +787,58 @@
       seg(m.drum, [m.shaft, G.well.ringTop - 2]);
       if (m.trough) { seg([m.shaft, G.well.ringTop - 2], [m.trough[0], m.trough[2]]); seg([m.trough[0], m.trough[2]], [m.trough[1], m.trough[2] + 2]); seg([m.trough[1], m.trough[2] + 2], [m.trough[1], G.aqTop - 6]); }
     }
+    /* The damp's way: how long the water from the hollow takes to soak to each grain. It goes down easily, sideways
+       less so and up hardly at all; soil drinks faster than stone; it ends where it meets the water under the beds. */
+    let soak = null, soakEnd = 1, way = null;
+    function makeDamp() {
+      soak = null;
+      if (!G || !hollow.length) return;
+      const w = W1, W = w.W, mat = w.mat, INF = 0xffff;
+      soak = new Uint16Array(w.N).fill(INF);
+      const buckets = [];
+      const push = (i, d) => { if (d < soak[i]) { soak[i] = d; (buckets[d] || (buckets[d] = [])).push(i); } };
+      for (const i of hollow) push(i + W, 0);
+      soakEnd = 0;
+      let end = 0;
+      for (let d = 0; d < buckets.length; d++) {
+        const b = buckets[d];
+        if (!b) continue;
+        for (const i of b) {
+          if (soak[i] !== d) continue;
+          const m = mat[i];
+          if (m === 22) { if (!soakEnd) { soakEnd = d; end = i; } continue; }
+          if (soakEnd && d > soakEnd) continue;
+          const rock = m === 2;
+          /* Soil drinks sideways along its layer; stone mostly lets it through; a little grain-to-grain unevenness. */
+          const step = (j, c) => { const mj = mat[j]; if (mj === 0 || mj === 1) return; push(j, d + c + ((j * 2654435761) >>> 29 & 3)); };
+          step(i + W, rock ? 2 : 1); step(i - 1, rock ? 16 : 6); step(i + 1, rock ? 16 : 6);
+        }
+        buckets[d] = null;
+      }
+      if (!soakEnd) soakEnd = 1;
+      /* The way it found, back from the water to the hollow. */
+      way = new Uint8Array(w.N);
+      for (let i = end, guard = 0; i && soak[i] > 0 && guard < 4000; guard++) {
+        way[i] = 1; way[i - 1] = way[i - 1] || 2; way[i + 1] = way[i + 1] || 2;
+        let best = i;
+        for (const j of [i - W, i - 1, i + 1]) if (soak[j] < soak[best]) best = j;
+        if (best === i) break;
+        i = best;
+      }
+    }
     function seepAt2(gx, gy, t) {
-      /* The damp's way: straight down from the hollow to the stone, then along the top of the stone to the water. */
-      if (!G) return 0;
-      const front = smooth(beat(24.5), beat(27), t);
-      const x0 = G.hc, y0 = G.sb + 12, ys = G.sb + 100, x1 = G.aq.x - G.aq.rx * 0.6;
-      if (Math.abs(gx - x0) <= 2 && gy >= y0 && gy <= y0 + (ys - y0) * Math.min(1, front * 2)) return 0.55;
-      if (front > 0.5 && gy >= ys - 2 && gy <= ys + 1 && gx >= x0 && gx <= x0 + (x1 - x0) * (front - 0.5) * 2) return 0.55;
-      return 0;
+      if (!soak) return 0;
+      const i = idx1(gx, gy), d = soak[i];
+      if (d === 0xffff) return 0;
+      /* The front leaves the hollow as the ground dries, and reaches the water as the picture tilts down. */
+      const front = soakEnd * smooth(beat(24.2), beat(28.5), t);
+      if (d > front) return 0;
+      /* Its way, clearest; the edge it has reached, dithered; behind it, the ground only a little damp. */
+      if (way[i] === 1) return 0.6;
+      if (way[i] === 2) return 0.35;
+      const b = BAYER[(gy & 3) * 4 + (gx & 3)] / 16;
+      if (front - d < soakEnd * 0.1) return b < 0.5 ? 0.32 : 0.14;
+      return b < 0.5 ? 0.16 : 0.06;
     }
 
     function drawYou(dst, cols, rows, cam, t, k, p) {
@@ -793,7 +849,7 @@
       switch (p.pose) {
         case 'plant': case 'dig': beadLen = 4 + (Math.floor(t * 6) & 1); beadDx = 1; break;
         case 'shaft': beadLen = 4; break;
-        case 'build': beadLen = 3; beadDx = 1; bright = (Math.floor(t * 4) & 1) === 0; break;
+        case 'build': beadLen = 3; beadDx = 1; bright = !reel.reduced && (Math.floor(t * 4) & 1) === 0; break;
         case 'discover': hop = t - p.t0 < 0.4 ? -1 : 0; bright = t - p.t0 < 0.8; break;
         case 'move': case 'carry': lean = p.dir; break;
         default: break;
@@ -819,11 +875,11 @@
         draw(bright ? BEAD24B : BEAD24, tieX - 2 + beadDx + 1, tieY + len);
       } else {
         const fr = p.pose === 'discover' && C12.discover12 ? C12.discover12[Math.min(2, Math.floor((t - p.t0) / 0.3))] :
-          p.pose === 'move' || p.pose === 'carry' ? C12.lean12[p.dir > 0 ? 0 : 1] :
           p.pose === 'look' ? C12.inspect12[0] :
-          p.pose === 'build' || p.pose === 'plant' || p.pose === 'dig' ? C12.construct12[Math.floor(t * 3) & 1] :
+          p.pose === 'build' || p.pose === 'plant' || p.pose === 'dig' ? C12.construct12[reel.reduced ? 0 : Math.floor(t * 3) & 1] :
           blink ? C12.blink12 : C12.idle12[f];
-        draw(fr, Math.round(ox), Math.round(oy));
+        /* Going down the shaft, the bead is on its line below, not in the frame. */
+        draw(p.pose === 'shaft' ? fr.slice(0, lineRow(fr)) : fr, Math.round(ox), Math.round(oy));
         if (p.pose === 'shaft') {
           /* The bead goes down the shaft on its line, digging. */
           const tieX = Math.round(ox) + 7, tieY = Math.round(oy) + 8;
@@ -842,8 +898,9 @@
       const g = G;
       /* The close-up's frame and the 1:1's, in Exhibit B's grains. */
       const cw = (cam.cols || cols), ch = (cam.rows || rows);
-      const close = { x: (((g.hc + g.sap) + 40 - cw / 2) / 2) / S1, y: (g.sb - ch * 0.23) / S1, w: cw / 2.4, h: ch / 2.4 };
-      const wide = { x: (346 - cw / 2) / S1, y: 36 / S1, w: cw / S1, h: ch / S1 };
+      const c0 = camAt(0, cw, ch), w0 = camAt(T_ONE, cw, ch);
+      const close = { x: c0.x / 2 / S1, y: c0.y / 2 / S1, w: cw / 2 / S1, h: ch / 2 / S1 };
+      const wide = { x: w0.x / S1, y: w0.y / S1, w: cw / S1, h: ch / S1 };
       [close, wide].forEach((r) => {
         const x0 = Math.round(r.x - cam.x), y0 = Math.round(r.y - cam.y), x1 = Math.round(r.x + r.w - cam.x), y1 = Math.round(r.y + r.h - cam.y);
         const edge = (x, y) => { if (x >= 0 && y >= 0 && x < cols && y < rows) { const o = y * cols + x; dst[o] = blend(dst[o], LANTERN_C[0], LANTERN_C[1], LANTERN_C[2], reel.reduced ? 0.5 : a); } };
@@ -869,11 +926,11 @@
       if (judge && !judge(reel.pace)) reel.slow = true;
     }
 
-    if (alive) { initWC(); initW1(); makeLoop(); bg = later(); }
+    if (alive) { initWC(); initW1(); makeLoop(); makeDamp(); bg = later(); }
 
     /* Getters stay getters (Object.assign would copy their values once). */
     Object.defineProperties(reel, Object.getOwnPropertyDescriptors({
-      tick, frame, paint, reset, warming,
+      tick, frame, paint, reset, resetting, warming,
       get t() { return n / 60; },
       get worlds() { return { W1, WC, W1P, WF }; },
       get G() { return G; },
@@ -897,7 +954,7 @@
     const reel = makeReel({ W1, WC }, seed, size);
     reel.warmed = !(slow && slow());
     if (reel.warmed) yield* reel.warming(judge, size);
-    reel.reset(seed);
+    yield* reel.resetting(seed);
     return reel;
   }
 
