@@ -20,13 +20,12 @@
 
   const T = Core.T, VW = Core.VW, VH = Core.VH, Q = Core.Q, COLORS = Core.COLORS, KEYS = Core.KEYS;
   const SOUND = 'assets/silt-film.m4a';
-  /* The still is the widest view near its end, one pixel per cell: this many cells across, with this many rows of sky
-     above the world's top. Its last rows are plain rock. A still made at a coarser density is drawn that many cells
-     to its pixel. */
-  const STILL_SRC = 'assets/film-still.png', STILL_T = 52.6;
-  const STILL_W = 200 * Q, STILL_SKY = 12 * Q, STILL_DEEP = 8 * Q;
-  const NAME = 'Silt, a 60-second concept film with sound, drawn grain by grain: a small creature tends one patch of ' +
-    'ground, and the camera steps back across the valley that grows from it.';
+  /* The still is the film's whole world near the end of its last working view, the place grown at dusk, one pixel per
+     cell: this many cells across. It is drawn where that view's picture sits. */
+  const STILL_SRC = 'assets/film-still.png', STILL_T = 51.5;
+  const STILL_W = 691;
+  const NAME = 'Silt, a 60-second concept film with sound, drawn grain by grain: a small floating creature tends one bare ' +
+    'patch of ground, the water finds its way down to a wheel it builds, and the place grows into the cross-section below.';
   const NAME_SILENT = NAME.replace(' with sound', '');
   const HOLD = 59.4; /* The end card, before the film fades. It stays up after this. */
   const END_CARD = 59.0; /* Where the video picks up an ended film. */
@@ -600,13 +599,14 @@
     ctx.fillRect(0, 0, geo.cols, geo.rows);
     const w = still.naturalWidth, h = still.naturalHeight;
     if (w) {
-      /* It goes on upwards as sky and downwards as rock, for as many rows as a tall picture has. */
-      const k = Math.max(1, Math.round(STILL_W / w)), sky = STILL_SKY / k, deep = STILL_DEEP / k;
-      const x = -v.cam.x, y = -v.cam.y - STILL_SKY;
+      /* Where the picture runs past the world's edge, its edge row or column carries on. */
+      const x = -v.cam.x, y = -v.cam.y;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(still, 0, 0, w, h, x, y, w * k, h * k);
-      for (let up = y; up > 0; up -= STILL_SKY) ctx.drawImage(still, 0, 0, w, sky, x, up - STILL_SKY, w * k, STILL_SKY);
-      for (let down = y + h * k; down < geo.rows; down += STILL_DEEP) ctx.drawImage(still, 0, h - deep, w, deep, x, down, w * k, STILL_DEEP);
+      ctx.drawImage(still, x, y);
+      if (y > 0) ctx.drawImage(still, 0, 0, w, 1, x, 0, w, y);
+      if (y + h < geo.rows) ctx.drawImage(still, 0, h - 1, w, 1, x, y + h, w, geo.rows - y - h);
+      if (x > 0) ctx.drawImage(canvas, x, 0, 1, geo.rows, 0, 0, x, geo.rows);
+      if (x + w < geo.cols) ctx.drawImage(canvas, x + w - 1, 0, 1, geo.rows, x + w, 0, geo.cols - x - w, geo.rows);
     } else {
       /* No picture, so nothing to name. */
       v.labels.length = 0;

@@ -77,7 +77,8 @@
     glow: ['#F2A24A', '#FBC66A', '#FFE09A', '#FFF6DC'],
     wood: ['#3D2A20', '#52382A', '#6A4934', '#845D42'],
     creature: ['#221917', '#C9A47E', '#E2C29C', '#FBEBD2'],
-    worm: ['#8E5E50', '#A87060', '#C48A72', '#D9A288']
+    worm: ['#8E5E50', '#A87060', '#C48A72', '#D9A288'],
+    silt: ['#8C7864', '#9A8570', '#A8937E', '#B6A08C']
   };
 
   /* Coracle, the creature, drawn over the grains (it throws no dice). One size in the world: the 9 set below 1.8 grains
@@ -202,6 +203,27 @@
     const zone = new Uint8Array(N), sky = new Uint8Array(N), origM = new Uint8Array(N), gk = new Uint8Array(N);
     const col = new Uint32Array(N), base = new Uint32Array(N), orig = new Uint32Array(N);
     const NB4 = [-W, W, -1, 1];
+    /* For the film: with { tags }, which part of the composition last set each grain, and what the grain was before the
+       first part after the land touched it. Nothing is recorded, and nothing changes, without it. */
+    const tags = opts && opts.tags ? { part: new Uint8Array(N), bareM: new Uint8Array(N), bareC: new Uint32Array(N), prevM: new Uint8Array(N), prevC: new Uint32Array(N) } : null;
+    /* What the film can ask of a world. As here, it is Exhibit B; the film turns things off and drives the weather. */
+    const BARE_KEEP = [0, 1, 1, 0, 1, 1];
+    const ctl = { auto: true, rain: null, seep: 0, creature: true, machine: 4, clouds: true, stars: true, lights: 1, flies: true, spill: 0 };
+    function mark(k) {
+      if (!tags) return;
+      const pm = tags.prevM, pc = tags.prevC, pt = tags.part;
+      for (let i = 0; i < N; i++) {
+        if (mat[i] === pm[i] && col[i] === pc[i]) continue;
+        /* The bare place keeps the land, what lies under it, and the rock round it (parts 1, 2, 4, 5): a grain's bare
+           state is what the last of those left it as. */
+        if (BARE_KEEP[k]) { tags.bareM[i] = mat[i]; tags.bareC[i] = col[i]; }
+        else if (BARE_KEEP[pt[i]] || pt[i] === 0) { tags.bareM[i] = pm[i]; tags.bareC[i] = pc[i]; }
+        pt[i] = k; pm[i] = mat[i]; pc[i] = col[i];
+      }
+      /* What shows through the air, and the zones, as the land left them and as the whole composition did. */
+      if (k === 1) { tags.landB = base.slice(); tags.landZ = zone.slice(); tags.landS = sky.slice(); }
+      if (k === 18) { tags.finalB = base.slice(); tags.finalZ = zone.slice(); tags.finalS = sky.slice(); }
+    }
 
     /* The plan and the grains. A step of the plan, numbered v, covers the grains from F(v) up to F(v + 1).
        P gives a length of the plan in grains; pl gives the middle of a grain as a place on the plan, numbered the same way. */
@@ -504,6 +526,7 @@
 
     yield;
 
+    mark(1);
     /* -- Underground: the water under the beds, the cave, the stream between, the well and the cellar.
        Their shapes are on the plan; the water lines and floors are in grains. */
 
@@ -567,6 +590,7 @@
     const pool = { L: 0, R: -1, top: 0 };
     /* Where things are, in grains, for the machine and for the film: filled in as the parts are placed. */
     const geo = { aqTop, aq: { x: aq.X, rx: aq.RX }, stair: null, well: null, bed: null };
+    if (pond) geo.pond = { L: pond.L, R: pond.R, top: SB, dep: pond.dep };
     (function () {
       let sx = -1;
       for (let x = 0; x < GW && sx < 0; x++) if (zone[idx(x, aqTop + P(1))] === Z_AQ) sx = x;
@@ -633,6 +657,7 @@
       });
     })();
 
+    mark(2);
     /* The well shaft, lined in stone, down to the water. */
     let shaftBottom = -1;
     const ropeX = F(well + 0.5);
@@ -649,6 +674,7 @@
       }
     }
 
+    mark(3);
     /* A geode and a fossil, for whoever digs. */
     const lamps = [];
     (function () {
@@ -689,6 +715,7 @@
 
     yield;
 
+    mark(4);
     /* Rock round an opening is darkest, and a little dark a grain further in. */
     (function () {
       const rim = new Uint8Array(N);
@@ -709,6 +736,7 @@
 
     yield;
 
+    mark(5);
     /* -- On the ground */
 
     const canopy = [], canopyCol = [], canopyBloom = [], canopyAt = new Int32Array(N).fill(-1);
@@ -815,6 +843,7 @@
     const fish = [], flies = [], plants = [], fungi = [], worms = [];
     const mossGroup = new Uint8Array(N); /* Which named place a mossy surface belongs to. */
 
+    mark(6);
     /* The pond: lilies, fish, reeds, and the bridge over it. */
     const FL = Math.max(3, P(3)); /* A fish, nose to tail. */
     if (pond) {
@@ -875,6 +904,7 @@
 
     yield;
 
+    mark(7);
     /* Trees. */
     if (seg.grove) {
       const s = seg.grove, tx = s.x0 + Math.round(s.w * 0.54);
@@ -889,6 +919,7 @@
       if (s.w >= 34 || s.x0 + s.w < GWp - 4) bush(s.x0 + 30, 5, 4, false);
     }
 
+    mark(8);
     /* The meadow, with a sapling tied to its stake. */
     if (seg.meadow) {
       const s = seg.meadow;
@@ -913,6 +944,7 @@
 
     yield;
 
+    mark(9);
     /* The cabin, with a cellar under it, a lantern by the path, and the well.
        Drawn in steps of the plan, each step filled grain by grain. */
     if (seg.home) {
@@ -1058,6 +1090,7 @@
 
     yield;
 
+    mark(10);
     /* Terraces: stone retaining walls, beds and what grows in them. */
     if (seg.terraces) {
       const s = seg.terraces, starts = [266, 288, 310, 332];
@@ -1163,6 +1196,7 @@
       }
     }
 
+    mark(11);
     /* Grass blades, thin and many, and the wildflowers of the opening. */
     const segOf = (x) => segAt[clamp(x, 0, GW - 1)];
     for (let x = 0; x < GW; x++) {
@@ -1183,6 +1217,7 @@
 
     yield;
 
+    mark(12);
     /* -- Wildflowers: each one a plant with its own life. Sizes and steps are on the plan; cells are grains. */
 
     const GROW = 0, OPEN = 1, SEEDING = 2, WITHER = 3;
@@ -1285,6 +1320,7 @@
 
     yield;
 
+    mark(13);
     /* -- The cave: glowing fungi on its floor, small lights on its ceiling. */
 
     const FG = 0, FALIVE = 1, FFADE = 2;
@@ -1341,6 +1377,7 @@
     }
     lamps.forEach((l) => lights.push(l));
 
+    mark(14);
     /* -- A worm or two in the topsoil. */
 
     const WL = P(5);
@@ -1360,6 +1397,7 @@
     placeWorm(seg.meadow ? seg.meadow.x0 + 2 : seg.grove ? seg.grove.x0 + 4 : 4);
     if (GWp >= 200) placeWorm(seg.grove ? seg.grove.x0 + 6 : seg.orchard ? seg.orchard.x0 + 2 : GWp - 40);
 
+    mark(15);
     /* -- Fireflies, drifting over the grass and the water. */
 
     segs.forEach((s) => {
@@ -1373,6 +1411,7 @@
       }
     });
 
+    mark(16);
     /* -- Stars and clouds: the sky behind everything. */
 
     const stars = [];
@@ -1398,6 +1437,7 @@
 
     yield;
 
+    mark(17);
     /* -- The opening's damp: dry on top, damp lower down, wetter round the pond and in the beds. */
 
     const soilList = [];
@@ -1466,6 +1506,7 @@
     const pondTarget = pondCap - Math.round(pondTop * 0.8 * U);
     const poolTarget = countWater(Z_POOL);
 
+    mark(18);
     /* -- Rules. Grains move as far each second, and things happen as often, at any size of grain:
        moving grains take about U steps a tick, and what is counted in grains of water is counted U*U times over. */
 
@@ -2047,11 +2088,42 @@
         lastWellDrip = T;
       }
     }
+    /* The film's weather and water, when it asks: rain of strength i over grains x0 to x1, and drops forming over the
+       water under the beds, so many a tick. Its water comes from out of sight. */
+    function filmRain() {
+      const r = ctl.rain;
+      rain.i = r.i;
+      rain.acc += r.i * (r.rate || 0.6 * U2);
+      while (rain.acc >= 1) {
+        rain.acc -= 1;
+        const x = Math.floor(r.x0 + rf() * (r.x1 - r.x0));
+        if (x < 0 || x >= GW) continue;
+        const i = idx(x, rint(P(3)));
+        if (mat[i] === AIR) { mat[i] = WATER; aux[i] = 0; stamp[i] = stampNow; }
+      }
+    }
+    function filmSeep() {
+      for (let n = some(ctl.seep); n > 0; n--) {
+        if (!dripAq.length) return;
+        const i = dripAq[rint(dripAq.length)];
+        if (mat[i] === AIR) { mat[i] = DRIP; aux[i] = 30 + rint(90); col[i] = 0; }
+      }
+    }
     function director() {
-      if (!rain.on) { if (T >= rain.next && hidden >= 640 * U2) startRain(); }
+      if (ctl.rain) filmRain();
+      else if (!rain.on) { if (ctl.auto && T >= rain.next && hidden >= 640 * U2) startRain(); }
       else stepRain();
+      if (ctl.seep > 0) filmSeep();
+      /* The film's spill: the water under the beds coming over into the head of the stair, so many grains a tick. */
+      if (ctl.spill > 0 && geo.stair) {
+        const s0 = geo.stair.steps[0];
+        for (let n = some(ctl.spill); n > 0; n--) {
+          const i = idx(geo.stair.sx - 1 - rint(Math.max(2, P(4))), s0.top + 1 + rint(Math.max(1, s0.water - s0.top - 1)));
+          if (mat[i] === AIR) { mat[i] = WATER; aux[i] = 0; stamp[i] = stampNow; }
+        }
+      }
       /* Where the ground holds more, the spring under the beds runs harder, and so does the stream. */
-      const seepP = aqN < aqTarget + AQ_SPARE ? clamp((hidden / U2 - 220) / 2400, 0, 0.2) : 0;
+      const seepP = ctl.auto && aqN < aqTarget + AQ_SPARE ? clamp((hidden / U2 - 220) / 2400, 0, 0.2) : 0;
       if (seepP > 0 && seeps.length) {
         for (let n = some(seepP * U2); n > 0; n--) {
           const i = seeps[rint(seeps.length)];
@@ -2082,7 +2154,7 @@
         for (; smokeAcc >= 1; smokeAcc--) { const c = chimney[rint(chimney.length)]; if (mat[c] === AIR) { mat[c] = SMOKE; aux[c] = 0; } }
       }
       /* The world goes on past the edge of the plate. When the meadow here is thin, a seed blows in from there. */
-      if (plants.length < plantCap * 0.45 && (r32() & 511) === 0) {
+      if (ctl.auto && plants.length < plantCap * 0.45 && (r32() & 511) === 0) {
         const x = rint(GW), i = idx(x, 1 + rint(Math.max(1, SB - P(24))));
         if (plantable[x] && mat[i] === AIR) {
           mat[i] = SEED; col[i] = K.wood[2 + rint(2)]; aux[i] = 160 + rint(95);
@@ -2090,7 +2162,7 @@
         }
       }
       /* Likewise in the cave: when its lights are few, a spore drifts down out of the dark. */
-      if (fungi.length < Math.max(2, fungiCap * 0.5) && sporeSites.length && (r32() & 2047) === 0) {
+      if (ctl.auto && fungi.length < Math.max(2, fungiCap * 0.5) && sporeSites.length && (r32() & 2047) === 0) {
         const i = sporeSites[rint(sporeSites.length)];
         if (mat[i] === AIR) { mat[i] = SPORE; aux[i] = 90 + rint(90); }
       }
@@ -2272,7 +2344,7 @@
         }
       }
       /* Stars, then the clouds drifting over them. */
-      for (let k = 0; k < stars.length; k++) {
+      for (let k = 0; ctl.stars && k < stars.length; k++) {
         const s = stars[k], i = idx(s[0], s[1]);
         if (mat[i] !== AIR) continue;
         const b = s[4] * (0.6 + 0.4 * Math.sin((T + s[3]) * 0.021 + s[3]));
@@ -2284,7 +2356,7 @@
         }
       }
       const ri = rain.i;
-      for (let k = 0; k < clouds.length; k++) {
+      for (let k = 0; ctl.clouds && k < clouds.length; k++) {
         const cl = clouds[k], cx = Math.round(cl.x * U), cs = cl.cells;
         for (let n = 0; n < cs.length; n += 3) {
           const x = cx + cs[n], y = cl.y + cs[n + 1];
@@ -2304,8 +2376,8 @@
         const tx = f.x - f.dir * (FL - 1), ty = f.y + (hash(f.x, f.y, T >> 3) < 0.5 ? -1 : 1);
         if (at(tx, ty) === WATER) out[ty * GW + tx] = K.blossom[0];
       }
-      drawMachine();
-      if (hover) {
+      if (ctl.machine > 0) drawMachine();
+      if (hover && ctl.creature) {
         /* Phased from the scene's start, so the frozen frame is the rest pose. 40 ticks a second: a 3 s bob (rest,
            lift, a short settle), and a blink every 6 s, always at rest. */
         const ph = T - T0, b = ((ph % 120) + 120) % 120, w = ((ph % 240) + 240) % 240;
@@ -2329,7 +2401,7 @@
         let a = l[3];
         if (l[4] === 1) a *= 0.7 + 0.3 * Math.sin(T * 0.013 + l[0] / U * 1.7);
         else if (l[4] === 2) a *= 0.92 + 0.08 * Math.sin(T * 0.05) * Math.sin(T * 0.031 + 1);
-        light(l[0], l[1], l[2], a);
+        light(l[0], l[1], l[2], a * ctl.lights);
       }
       for (let k = 0; k < fungi.length; k++) {
         const f = fungi[k];
@@ -2342,7 +2414,7 @@
         const i = sporeList[k];
         if (mat[i] === SPORE) light((i % W) - 1, ((i / W) | 0) - 1, R_SPORE, 0.25);
       }
-      for (let k = 0; k < flies.length; k++) {
+      for (let k = 0; ctl.flies && k < flies.length; k++) {
         const f = flies[k], u = ((T + f.ph) % f.per) / f.per;
         let b = u < 0.32 ? Math.sin(Math.PI * u / 0.32) : 0;
         b *= 1 - 0.65 * ri;
@@ -2398,7 +2470,7 @@
         if (mat[i] === WATER && stamp[i] === stampNow) flow++;
       }
       mach.run += ((flow > 0 ? 1 : 0) - mach.run) * (flow > 0 ? 0.06 : 0.015);
-      mach.a += mach.run * 0.045;
+      if (!ctl.hold) mach.a += mach.run * 0.045;
     }
     const C_POT = [K.worm[0], K.worm[2], K.worm[3]];
     const C_ROPE = pk(rgb('#B49A78'));
@@ -2410,8 +2482,9 @@
       const [hx, hy] = mach.hub, R = mach.R, a = mach.a;
       /* The niche it turns in, cut where the rock was. */
       for (let y = -R - 2; y <= R + 2; y++) for (let x = -R - 2; x <= R + 2; x++) if (x * x + y * y <= (R + 1.6) * (R + 1.6)) nook(hx + x, hy + y);
-      /* The belt: a rope from the hub to the drum, in a slot where it passes through rock. */
-      (function () {
+      /* The belt: a rope from the hub to the drum, in a slot where it passes through rock. The film builds the machine
+         in stages (ctl.machine): 1 the wheel, 2 the belt and drum, 3 the pots, 4 the trough. */
+      if (ctl.machine >= 2) (function () {
         let [x0, y0] = mach.hub; const [x1, y1] = mach.drum;
         const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
         let e = dx + dy, n = 0;
@@ -2433,8 +2506,10 @@
       for (let k = 0; k < 8 * R; k++) { const t = k * Math.PI * 2 / (8 * R); dot(Math.round(hx + Math.cos(t) * R), Math.round(hy + Math.sin(t) * R), K.wood[3]); }
       dot(hx, hy, K.wood[3]);
       /* The drum at the foot of the shaft. */
+      if (ctl.machine < 2) return;
       const [dx, dy] = mach.drum;
       for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) dot(dx + x, dy + y, (x || y) ? K.wood[1] : K.wood[3]);
+      if (ctl.machine < 3) return;
       /* The pot loop: a rope up the shaft and a clay pot every few grains, rising as the wheel turns. */
       const px = mach.px, g = mach.gap, off = Math.floor(a * R * 0.7) % g;
       for (let y = mach.top; y <= dy - 2; y++) if (at(px, y) === AIR || at(px, y) === WATER) dot(px, y, C_ROPE);
@@ -2443,7 +2518,7 @@
       }
       /* The trough, over the fence to the bed, with water running in it while the wheel turns. */
       const tr = mach.trough;
-      if (tr) {
+      if (tr && ctl.machine >= 4) {
         for (let x = tr.x0; x <= tr.x1; x++) {
           const y = tr.y(x);
           /* A split log: its lit rim, its shadowed belly, and water in it while the wheel turns. */
@@ -2464,6 +2539,45 @@
       get moved() { return moved; },
       get living() { return living; },
       get machine() { return mach ? { run: mach.run, angle: mach.a } : null; },
+      /* For the film: the arrays, its controls, the part tags, where the creature hovers, and the bare ground. */
+      ctl, tags, col, base, aux, wet, zone, sky, gk, W, H, N,
+      get hover() { return hover ? { x: hover.x, y: hover.y, w: hover.set.rest[0].length, h: hover.set.rest.length } : null; },
+      /* The place before anyone came: the land and what lies under it (the water under the beds a little lower, the
+         stair and the cave pool dry), pale silt where the turf and beds will be, the pond's hollow filled level, and
+         none of what grows or was built. Needs { tags }. */
+      makeBare(lower) {
+        if (!tags) throw new Error('boot with { tags: true }');
+        const keep = (p) => !!BARE_KEEP[p];
+        const silt = (x, y) => K.silt[pick(0.5, 1.6, x, y, 77)];
+        const aqLine = aqTop + (lower === undefined ? P(3) : lower);
+        for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+          const i = y * W + x, gx = x - 1, gy = y - 1;
+          if (!keep(tags.part[i])) { mat[i] = tags.bareM[i]; col[i] = tags.bareC[i]; }
+          const z0 = zone[i];
+          if (!keep(tags.part[i]) || z0 === Z_SHAFT || z0 === Z_CELLAR || z0 === Z_POND) { base[i] = tags.landB[i]; zone[i] = tags.landZ[i]; sky[i] = tags.landS[i]; }
+          const k = gk[i], z = zone[i];
+          if ((z0 === Z_POND && gy >= SB) || (k === 7 && gy >= SB)) {
+            /* The pond's hollow, filled level with what is round it: silt on top, topsoil under. */
+            mat[i] = SOIL; col[i] = gy < SB + P(2) ? silt(gx, gy) : K.topsoil[pick(0.45, 1.5, gx, gy, 78)]; sky[i] = 0; zone[i] = 0;
+          }
+          else if (z0 === Z_POND && mat[i] === WATER) { mat[i] = AIR; col[i] = 0; }
+          else if ((k === 8 || k === 9) && (mat[i] === TURF || mat[i] === TILL)) { mat[i] = SOIL; col[i] = silt(gx, gy); }
+          else if (mat[i] === WATER && (z === Z_POOL || (z === Z_AQ && gy < aqLine))) { mat[i] = AIR; col[i] = 0; aux[i] = 0; }
+          else if (mat[i] >= GREEN && mat[i] !== SOIL && mat[i] !== TURF && mat[i] !== TILL && mat[i] !== WATER) {
+            /* Whatever lives or drifts: back to what was there, or to air. */
+            mat[i] = tags.bareM[i]; col[i] = tags.bareC[i];
+            if (mat[i] >= GREEN && mat[i] !== SOIL && mat[i] !== TURF && mat[i] !== TILL && mat[i] !== WATER) { mat[i] = AIR; col[i] = 0; }
+          }
+        }
+        wet.fill(0);
+        plants.length = 0; fungi.length = 0; worms.length = 0; flies.length = 0; fish.length = 0; lights.length = 0;
+        chimney.length = 0; eyes.length = 0; stand.length = 0;
+        ctl.creature = false; ctl.machine = 0; ctl.auto = false;
+        census();
+      },
+      /* A grain as the composition left it (before the opening settled). */
+      restore(i) { if (tags) { mat[i] = tags.prevM[i]; col[i] = tags.prevC[i]; base[i] = tags.finalB[i]; zone[i] = tags.finalZ[i]; sky[i] = tags.finalS[i]; } },
+      settle(n) { for (let k = 0; k < n; k++) { update(); drift(); } },
       next() { return queue.length ? [queue.shift(), queue.shift()] : null; },
       /* The opening is settled with the opening's dice. From here on each visit throws its own. */
       begin(given) {
