@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Silt film soundtrack, for the cut of 2026-11-03. The cue sheet below (CUES) is that film's timeline:
+Silt film soundtrack, for the re-cut of 2026-11-04. The cue sheet below (CUES) is that film's timeline:
 re-cut the film and the cues, the sections and the chords change with it.
 
 Renders silt-film.wav (60.000 s, 48 kHz, stereo, 16-bit) next to this file, encodes the site's
@@ -69,54 +69,70 @@ def hz(name):
 
 # (time as the sheet writes it, exact time, what it is). These are the accents the film is drawn against.
 CUES = [
-    ("3.33", beat(4), "kalimba pluck D5: the seed lands"),
-    ("4.17", beat(5), "tiny click: picked up"),
-    ("5.83", beat(7), "scratch tick 1"),
-    ("6.25", beat(7.5), "scratch tick 2"),
-    ("6.67", beat(8), "kalimba pluck A4: seed dropped in"),
-    ("7.08", beat(8.5), "soft tick: nudged over"),
-    ("8.33", beat(10), "dig tick 1"),
-    ("9.17", beat(11), "dig tick 2 (higher)"),
-    ("10.00", beat(12), "dig tick 3 (higher); trickle and pad begin"),
-    ("13.33", beat(16), "soft low bell D4 (hard cut)"),
-    ("16.67", beat(20), "first growth pluck"),
-    ("20.00", beat(24), "FM e-piano enters, Dmaj9"),
-    ("25.83", beat(31), "marimba A3"),
-    ("(26.25)", beat(31.5), "marimba E4, the second note"),
-    ("29.17", beat(35), "soft scoop"),
-    ("30.00", beat(36), "chord to Gmaj7 (e-piano)"),
+    ("0.42", beat(0.5), "key tick: s"),
+    ("0.83", beat(1), "key tick: i"),
+    ("1.25", beat(1.5), "key tick: l"),
+    ("1.67", beat(2), "key tick: t"),
+    ("2.08", beat(2.5), "kalimba D4: Enter, the world fades up"),
+    ("4.17", beat(5), "kalimba A4: the seed lands"),
+    ("5.00", beat(6), "soft tap and kalimba D5: planted"),
+    ("7.50", beat(9), "dig tick 1"),
+    ("7.92", beat(9.5), "scratch 1"),
+    ("8.33", beat(10), "dig tick 2 (higher)"),
+    ("8.75", beat(10.5), "scratch 2"),
+    ("9.17", beat(11), "dig tick 3 (higher)"),
+    ("9.58", beat(11.5), "scratch 3"),
+    ("10.00", beat(12), "kalimba F#4: it looks in"),
+    ("11.67", beat(14), "wooden knock: the plank"),
+    ("12.50", beat(15), "glassy tick: the first drops; the pad leans to G"),
+    ("14.17", beat(17), "soft low bell D4: the step back"),
+    ("18.33", beat(22), "kalimba D5: clay (with F#5 and A5 after)"),
+    ("20.00", beat(24), "faint high tick: inspect, moisture; the pad home to Dmaj9"),
+    ("20.42", beat(24.5), "bird call: they come to drink"),
+    ("20.83", beat(25), "kalimba B4: the sprout"),
+    ("24.58", beat(29.5), "drip 1"),
+    ("25.42", beat(30.5), "drip 2"),
+    ("25.83", beat(31), "marimba A3: the spill (F#4, E4, D4 after)"),
+    ("29.17", beat(35), "deep soft drop: the water reaches the cave"),
+    ("30.00", beat(36), "scratch: the shaft; chord to Gmaj7"),
+    ("30.83", beat(37), "scratch"),
+    ("31.67", beat(38), "scratch"),
+    ("32.50", beat(39), "scratch"),
+    ("33.33", beat(40), "bell D5: it breaks into the dark"),
 ] + [
-    (f"{31.67 + n * 0.41667:.2f}", beat(38 + n / 2), f"wooden knock {n + 1}") for n in range(10)
+    (f"{beat(42 + n / 2):.2f}", beat(42 + n / 2), f"wooden knock {n + 1}: building") for n in range(4)
 ] + [
-    ("35.00", beat(42), "chord to Bm9 (with knock 9)"),
-    ("37.08", beat(44.5), "bird chirp 1"),
-    ("39.58", beat(47.5), "bird chirp 2"),
-    ("41.67", beat(50), "crickets enter, Gmaj9; brushes stop"),
-    ("45.00", beat(54), "bell A4 (hard cut)"),
-    ("46.67", beat(56), "bell D5 (hard cut)"),
-    ("48.33", beat(58), "bell F#5 (hard cut); pad opens"),
-    ("50.00", 50.00, "glassy tick, ring 1"),
-    ("50.15", 50.15, "glassy tick, ring 2"),
-    ("50.30", 50.30, "glassy tick, ring 3"),
-    ("50.45", 50.45, "glassy tick, ring 4"),
-    ("55.00", 55.00, "soft breath of filtered noise"),
-    ("55.83", beat(67), "sand-pour hiss begins"),
-    ("58.60", 58.60, "kalimba pluck D5: the last grain lands"),
+    ("35.00", beat(42), "chord to Bm9 (with knock 1)"),
+    ("36.67", beat(44), "knock and creak: the water starts the wheel"),
+    ("37.50", beat(45), "kalimba D5: the pots (E5, F#5, A5, B5 after)"),
+    ("39.58", beat(47.5), "wooden knock: the trough"),
+    ("40.83", beat(49), "faint high tick: inspect, flow"),
+    ("41.67", beat(50), "kalimba D5: the first cabbage"),
+    ("42.92", beat(51.5), "bird call: at the trough"),
+    ("43.33", beat(52), "FM e-piano enters, Dmaj9: the days pass"),
+    ("48.33", beat(58), "crickets enter, Gmaj9: dusk"),
+    ("50.00", beat(60), "kalimba D5: home"),
+    ("52.50", beat(63), "soft low bell D4: the pull-back; D6/9"),
+    ("56.67", beat(68), "kalimba D5: the tagline; the pad resolves"),
 ]
+CUES = sorted(CUES, key=lambda c: c[1])
 
 # Sections of the sheet, for the balance table.
-SECTIONS = [0.0, beat(4), 7.5, beat(16), 20.0, 25.0, beat(35), 35.0, beat(50), 45.0, beat(56), beat(58),
-            beat(64), beat(67), DUR]
+SECTIONS = [0.0, beat(3), beat(9), beat(15), beat(17), beat(24), beat(31), beat(36), beat(42), beat(48), beat(52),
+            beat(58), beat(63), beat(68), DUR]
 
 # Pad voicings, held from each time to the next (notes common to two chords are held, not restruck).
 PAD_CHORDS = [
-    (10.0, ["D3", "A3"]),                               # the open D-A fifth, ~2 s attack
-    (beat(24), ["D3", "A3", "E4", "F#4"]),             # 20.000 Dmaj9 (the e-piano carries the C#)
-    (beat(36), ["G2", "D3", "B3", "F#4"]),             # 30.000 Gmaj7
-    (beat(42), ["B2", "F#3", "A3", "D4"]),             # 35.000 Bm9 (the e-piano adds the C#)
-    (beat(50), ["G2", "D3", "A3", "B3", "F#4"]),       # 41.667 Gmaj9, held
-    (beat(58), ["D3", "A3", "E4", "F#4", "B4"]),       # 48.333 home: D6/9, the widest moment
+    (beat(3), ["D3", "A3"]),                           # 2.500 the open D-A fifth, ~2 s attack
+    (beat(15), ["G2", "D3", "B3", "F#4"]),             # 12.500 the rain: Gmaj7
+    (beat(24), ["D3", "A3", "E4", "F#4"]),             # 20.000 Dmaj9, after the rain
+    (beat(36), ["G2", "D3", "B3", "F#4"]),             # 30.000 Gmaj7, the shaft
+    (beat(42), ["B2", "F#3", "A3", "D4"]),             # 35.000 Bm9, the wheel
+    (beat(52), ["D3", "A3", "E4", "F#4"]),             # 43.333 Dmaj9, the days pass
+    (beat(58), ["G2", "D3", "A3", "B3", "F#4"]),       # 48.333 Gmaj9, dusk
+    (beat(63), ["D3", "A3", "E4", "F#4", "B4"]),       # 52.500 home: D6/9, the pull-back
 ]
+PAD_START = beat(3)
 
 EP_VOICING = {
     "Dmaj9": ["D3", "F#3", "A3", "C#4", "E4"],
@@ -126,34 +142,24 @@ EP_VOICING = {
     "D69": ["D3", "A3", "B3", "E4", "F#4"],
 }
 
-EP_STRIKES = [  # (beat, chord, velocity); kept clear of the other accents
-    (24, "Dmaj9", 0.80), (26, "Dmaj9", 0.42), (28, "Dmaj9", 0.62), (30, "Dmaj9", 0.40),
-    (32, "Dmaj9", 0.56), (34, "Dmaj9", 0.38),
-    (36, "Gmaj7", 0.74),
-    (42, "Bm9", 0.70), (44, "Bm9", 0.44), (46, "Bm9", 0.40), (48, "Bm9", 0.48),
-    (50, "Gmaj9", 0.58), (52, "Gmaj9", 0.30),
-    (58, "D69", 0.46), (62, "D69", 0.28),
+EP_STRIKES = [  # (beat, chord, velocity); the lo-fi bed comes in with the time-lapse
+    (52, "Dmaj9", 0.74), (54, "Dmaj9", 0.42), (56, "Dmaj9", 0.52),
+    (58, "Gmaj9", 0.62), (61, "Gmaj9", 0.36),
+    (63, "D69", 0.46), (66, "D69", 0.26),
 ]
 
-PLUCKS = [  # (beat, note, velocity) on the eighth grid, kept 0.4 s or more clear of the non-pluck accents
-    (4, "D5", 0.70),                                   # 3.333 the seed lands
-    (8, "A4", 0.60),                                   # 6.667 the seed goes in
-    (20, "A4", 0.50), (21, "D5", 0.45), (22, "F#5", 0.48), (23, "E5", 0.40),   # 16.667 one per beat
-    (24, "D5", 0.60), (25, "A4", 0.36), (25.5, "B4", 0.30), (26, "D5", 0.44),  # 20.000 up to two per beat
-    (27, "F#5", 0.42), (27.5, "E5", 0.32), (28, "D5", 0.42), (29, "B4", 0.36), (29.5, "A4", 0.28),
-    (30, "E5", 0.38), (30.5, "F#5", 0.30),
-    (32.5, "A5", 0.32), (33, "F#5", 0.38), (33.5, "E5", 0.28), (34, "D5", 0.36),
-    (36, "B4", 0.55), (36.5, "D5", 0.32), (37, "E5", 0.34),
-    (43, "F#5", 0.38), (43.5, "E5", 0.28), (44, "D5", 0.36),
-    (45.5, "B4", 0.32), (46, "D5", 0.36), (46.5, "F#5", 0.30), (47, "E5", 0.28),
-    (48.5, "B4", 0.28), (49, "A4", 0.32),
-    (51, "B4", 0.28), (52, "D5", 0.28), (53, "F#5", 0.24), (53.5, "E5", 0.20),
-    (61, "E5", 0.24), (62, "D5", 0.22), (63, "B4", 0.20),
-    (67.5, "F#4", 0.22), (68.5, "A4", 0.25), (69.5, "B4", 0.28),              # the end card, rising
+PLUCKS = [  # (beat, note, velocity)
+    (2.5, "D4", 0.62), (5, "A4", 0.62), (6, "D5", 0.55), (12, "F#4", 0.45),
+    (22, "D5", 0.52), (22.5, "F#5", 0.46), (23, "A5", 0.42),
+    (25, "B4", 0.50), (27, "A4", 0.26), (28, "B4", 0.24),
+    (31.5, "F#4", 0.42), (32, "E4", 0.40), (32.5, "D4", 0.38),
+    (45, "D5", 0.42), (45.5, "E5", 0.38), (46, "F#5", 0.40), (46.5, "A5", 0.36), (47, "B5", 0.34),
+    (50, "D5", 0.46), (53, "F#5", 0.24), (55, "E5", 0.22), (57, "D5", 0.22),
+    (60, "D5", 0.62), (61.5, "B4", 0.20),
+    (68, "D5", 0.60),
 ]
-LAST_GRAIN = 58.60
 
-KNOCK_NOTES = ["A4", "B4", "D5", "B4", "D5", "E5", "D5", "E5", "F#5", "D5"]
+KNOCK_NOTES = ["A4", "B4", "D5", "B4"]
 
 # Times other textures keep clear of, so every accent reads on its own.
 ACCENT_TIMES = np.array([c[1] for c in CUES])
@@ -532,12 +538,12 @@ def v_wind(mix):
     low = hp(lp(nz, 420), 90) / 0.12
     air = bp(nz, 300, 1500) / 0.22
     gust = wander(0.22, SEED + 11) * 0.7
-    # the opening gust: it lifts a few loose grains and carries the seed in (2.1 - 3.33)
-    gust = np.clip(gust + ease([(0.0, 0.0), (0.6, 0.0), (1.5, 0.3), (2.6, 0.75), (3.4, 0.2), (4.6, 0.0)]), 0, 1)
+    # the breath of wind that carries the seed in (3.33 - 4.17)
+    gust = np.clip(gust + ease([(2.4, 0.0), (3.2, 0.4), (3.9, 0.75), (4.4, 0.2), (5.4, 0.0)]), 0, 1)
     sig = low * (0.6 + 0.5 * gust) + air * (0.08 + 0.5 * gust ** 1.5)
-    level = ease([(0.2, 0.0), (1.4, 0.7), (3.4, 0.7), (5.0, 0.6), (10.0, 0.56), (beat(16), 0.62),
-                  (beat(16) + 0.12, 0.42), (20.0, 0.28), (41.0, 0.26), (44.0, 0.34), (beat(58), 0.38),
-                  (beat(64), 0.46), (55.0, 0.52), (beat(67), 0.32), (58.6, 0.14), (DUR, 0.0)])
+    level = ease([(1.9, 0.0), (2.6, 0.6), (5.0, 0.56), (beat(15), 0.62), (beat(24), 0.3), (beat(26.5), 0.24),
+                  (beat(29.5), 0.2), (43.0, 0.26), (beat(58), 0.34), (beat(63), 0.44), (56.0, 0.4), (59.0, 0.2),
+                  (DUR, 0.0)])
     sway = 0.12 * wander(0.15, SEED + 12, -1, 1)
     st.x = sig * level * np.stack([1 + sway, 1 - sway]) * 0.075
     st.done()
@@ -546,8 +552,8 @@ def v_wind(mix):
 def v_hum(mix):
     st = Stem(mix, "hum D2", send=0.05)
     f = hz("D2")
-    level = ease([(1.6, 0.0), (3.6, 1.0), (beat(16), 1.0), (14.5, 0.8), (30.0, 0.6), (beat(58), 0.72),
-                  (beat(64), 0.62), (beat(67), 0.58), (59.0, 0.45), (DUR, 0.0)])
+    level = ease([(2.0, 0.0), (3.8, 0.8), (beat(17), 0.8), (beat(26.5), 1.0), (beat(31), 0.8), (40.0, 0.6),
+                  (beat(58), 0.66), (beat(63), 0.7), (59.0, 0.45), (DUR, 0.0)])
     breathe = 1.0 + 0.08 * np.sin(2 * np.pi * 0.11 * T)
     ph = 2 * np.pi * f * T
     x = 0.45 * np.sin(ph) + 0.6 * np.sin(2 * ph + 0.5) + 0.3 * np.sin(3 * ph + 1.2) + 0.12 * np.sin(4 * ph + 2.0)
@@ -556,19 +562,16 @@ def v_hum(mix):
 
 
 def pad_cutoff():
-    pts = [(10.0, 650), (20.0, 950), (30.0, 1150), (beat(50), 1150), (43.3, 820), (beat(58), 820)]
-    # the low-pass opens step by step through the grand view, one step a beat
-    for k, f in enumerate((1100, 1450, 1850, 2250, 2600)):
-        tk = beat(58 + k)
+    pts = [(beat(3), 650), (beat(15), 600), (beat(24), 950), (beat(36), 1100), (beat(42), 1150), (beat(52), 1300)]
+    # the low-pass opens a step each beat as the days pass, and wide for the pull-back
+    for k, f in enumerate((1450, 1700, 1950, 2200)):
+        tk = beat(54 + 2 * k)
         pts += [(tk, pts[-1][1]), (tk + 0.3, f)]
-    # night falls in three steps
-    pts += [(beat(64), 2600), (beat(64) + 0.1, 1800), (53.75, 1800), (53.85, 1200), (54.167, 1200),
-            (54.267, 850), (beat(67), 750), (DUR, 600)]
+    pts += [(beat(63), 2200), (beat(63) + 0.4, 2600), (beat(68), 2400), (DUR, 1200)]
     return ease(pts)
 
 
-NIGHT_DIM = [(beat(64), 1.0), (beat(64) + 0.1, 0.78), (53.75, 0.78), (53.85, 0.62), (54.167, 0.62),
-             (54.267, 0.5)]
+SETTLE_DIM = [(beat(68), 1.0), (58.0, 0.85)]
 
 
 def v_pad(mix):
@@ -591,13 +594,13 @@ def v_pad(mix):
         amp = 1.0 if f < 200 else 0.8 if f < 400 else 0.6
         for s, e in runs:
             seed += 1
-            pad_note(st, f, s, e, att=2.0 if s == 10.0 else 0.7, rel=0.9, amp=amp, fc=fc, seed=seed,
+            pad_note(st, f, s, e, att=2.0 if s == PAD_START else 0.7, rel=0.9, amp=amp, fc=fc, seed=seed,
                      pan=0.25 * np.sin(seed))
-    for p, pan in (("A4", -0.3), ("E5", 0.3)):        # the widest moment
+    for p, pan in (("A4", -0.3), ("E5", 0.3)):        # the pull-back, the widest moment
         seed += 1
-        pad_note(st, hz(p), beat(59), beat(64), att=1.5, rel=1.0, amp=0.35, fc=fc, seed=seed, pan=pan)
-    st.x *= 0.085 * ease([(0, 1.0), (20.0, 1.0), (21.0, 0.8), (beat(58), 0.8), (52.0, 0.95)] + NIGHT_DIM +
-                 [(beat(67), 0.5), (57.0, 0.5), (DUR, 0.0)])
+        pad_note(st, hz(p), beat(63), beat(69), att=1.5, rel=1.2, amp=0.35, fc=fc, seed=seed, pan=pan)
+    st.x *= 0.085 * ease([(0, 1.0), (beat(24), 1.0), (beat(25), 0.85), (beat(52), 0.85), (beat(63), 1.0)] +
+                         SETTLE_DIM + [(59.0, 0.6), (DUR, 0.0)])
     st.done()
 
 
@@ -616,7 +619,7 @@ def v_epiano(mix):
     st.x[0] *= 1 + trem
     st.x[1] *= 1 - trem
     st.x = lp(st.x, 4200)
-    st.x *= ease([(0, 1.0)] + NIGHT_DIM + [(55.0, 0.0)])
+    st.x *= ease([(0, 1.0), (beat(66), 1.0), (58.0, 0.0)])
     st.done()
 
 
@@ -624,16 +627,14 @@ def v_plucks(mix):
     st = Stem(mix, "kalimba plucks", send=0.35)
     r = rng(6)
     for b, name, vel in PLUCKS:
-        t0 = beat(b)
-        pan = 0.0 if b == 4 else 0.15 if b == 8 else r.uniform(-0.3, 0.3)
-        st.put(kalimba(hz(name), vel, 600 + int(b * 2)), t0, pan=pan, gain=0.21)
-    st.put(kalimba(hz("D5"), 0.70, 604), LAST_GRAIN, pan=0.0, gain=0.21)   # the opening's pluck, again
+        pan = 0.0 if b in (2.5, 68) else r.uniform(-0.3, 0.3)
+        st.put(kalimba(hz(name), vel, 600 + int(b * 2)), beat(b), pan=pan, gain=0.21)
     st.done()
 
 
 def v_bells(mix):
     st = Stem(mix, "bells", send=0.5)
-    for b, name, vel in ((16, "D4", 0.85), (54, "A4", 0.72), (56, "D5", 0.66), (58, "F#5", 0.60)):
+    for b, name, vel in ((17, "D4", 0.72), (40, "D5", 0.62), (63, "D4", 0.74)):
         st.put(bell(hz(name), vel, 700 + b), beat(b), gain=0.19)
     st.done()
 
@@ -641,39 +642,75 @@ def v_bells(mix):
 def v_marimba(mix):
     st = Stem(mix, "marimba", send=0.3)
     st.put(marimba(hz("A3"), 0.9, 801), beat(31), pan=-0.12, gain=0.185)
-    st.put(marimba(hz("E4"), 0.8, 802), beat(31.5), pan=0.12, gain=0.185)
     st.done()
 
 
 def v_foley(mix):
-    st = Stem(mix, "ticks and scoop", send=0.12)
-    st.put(tick(2400, 0.6, 901), beat(5), pan=0.05, gain=0.14)                       # 4.167 tiny click
-    st.put(scratch(0.8, 902), beat(7), pan=0.22, gain=0.13)                           # 5.833
-    st.put(scratch(0.7, 903), beat(7.5), pan=0.22, gain=0.13)                         # 6.250
-    st.put(tick(1500, 0.55, 904, body_tau=0.01, band=(800, 3000)), beat(8.5), pan=0.18, gain=0.12)  # 7.083
-    for k, name in enumerate(("D6", "E6", "F#6")):                                     # 8.33, 9.17, 10.00
-        st.put(dig_tick(hz(name), 0.75 + 0.05 * k, 905 + k), beat(10 + k), pan=-0.3, gain=0.15)
-    st.put(scoop(0.9, 910), beat(35), pan=0.15, gain=0.30)                            # 29.167
+    st = Stem(mix, "ticks and scoops", send=0.12)
+    for k, b in enumerate((0.5, 1, 1.5, 2)):                                           # the name, typed
+        st.put(tick(2600 + 120 * k, 0.45, 880 + k, band=(2000, 6000)), beat(b), pan=-0.35, gain=0.10)
+    st.put(tick(1500, 0.55, 904, body_tau=0.01, band=(800, 3000)), beat(6), pan=0.1, gain=0.12)  # planted
+    for k, name in enumerate(("D6", "E6", "F#6")):                                     # the hollow, dug
+        st.put(dig_tick(hz(name), 0.75 + 0.05 * k, 905 + k), beat(9 + k), pan=-0.2, gain=0.15)
+        st.put(scratch(0.7, 920 + k), beat(9.5 + k), pan=0.2, gain=0.12)
+    st.put(scoop(0.9, 910), beat(35), pan=-0.25, gain=0.30)                            # into the cave
+    for k in range(4):                                                                 # the shaft
+        st.put(scratch(0.8 - 0.05 * k, 930 + k), beat(36 + k), pan=0.25, gain=0.13)
+    # a soft pour at each beat once the loop runs (under the knock), thinning out
+    for b in range(48, 52):
+        st.put(scoop(0.35 - 0.05 * (b - 48), 940 + b), beat(b) + 0.21, pan=0.3, gain=0.18)
     st.done()
 
 
 def v_knocks(mix):
     st = Stem(mix, "wooden knocks", send=0.2)
-    for n, name in enumerate(KNOCK_NOTES):
-        st.put(knock(hz(name), 0.8 + 0.02 * n, 1000 + n), beat(38 + n / 2), pan=0.2 + 0.04 * (n % 2), gain=0.3)
+    st.put(knock(hz("D4"), 0.8, 1010), beat(14), pan=-0.1, gain=0.3)                  # the plank
+    for n, name in enumerate(KNOCK_NOTES):                                             # the wheel, built
+        st.put(knock(hz(name), 0.95 if n == 1 else 0.8 + 0.02 * n, 1000 + n), beat(42 + n / 2), pan=0.2 + 0.04 * (n % 2), gain=0.34 if n == 1 else 0.3)
+    st.put(knock(hz("D5"), 0.85, 1020), beat(44), pan=0.15, gain=0.3)                 # the water starts it
+    st.put(knock(hz("E5"), 0.75, 1021), beat(47.5), pan=0.3, gain=0.26)               # the trough
+    # the wheel turning: a soft knock a beat, slowing and stopping as the afternoon's water runs out at dusk
+    b, k = 45.0, 0
+    while b < 58.0:
+        if b != 47.5:
+            st.put(knock(hz(("A4", "B4", "D5")[k % 3]), 0.42 * (1 - (b - 45) / 16), 1030 + k), beat(b),
+                   pan=0.2, gain=0.2)
+        b += 1.0 if b < 54 else 1.5
+        k += 1
     st.done()
 
 
 def v_glass(mix):
     st = Stem(mix, "glassy ticks", send=0.45)
-    for k, (t0, name, pan) in enumerate(((50.00, "F#6", -0.1), (50.15, "A6", 0.15), (50.30, "B6", -0.25),
-                                         (50.45, "D7", 0.3))):
-        st.put(glass(hz(name), 0.8, 1100 + k), t0, pan=pan, gain=0.17)
+    for k, (b, name, pan, vel) in enumerate(((15, "F#6", -0.2, 0.7), (24, "A6", 0.1, 0.5), (29.5, "D6", 0.25, 0.6),
+                                             (30.5, "E6", 0.3, 0.55), (49, "A6", 0.0, 0.5))):
+        st.put(glass(hz(name), vel, 1100 + k), beat(b), pan=pan, gain=0.17)
+    # a tiny high tick for each cap that lights in the cave as the days pass
+    r = rng(12)
+    for k in range(5):
+        tb = beat(52.5 + k * 0.7) + r.uniform(0.05, 0.25)
+        if clear_of_accents(tb, 0.15, 0.08):
+            st.put(glass(hz(("B6", "A6", "F#6", "D7", "E6")[k]), 0.3, 1150 + k), tb, pan=-0.4 + 0.2 * k, gain=0.12)
+    st.done()
+
+
+def v_rain(mix):
+    """12.5 - 20: soft rain, a hiss of filtered noise and scattered drops, swelling and easing."""
+    st = Stem(mix, "rain", send=0.25)
+    r = rng(10)
+    c = r.standard_normal(N)
+    hiss = lp(bp(np.stack([0.75 * c + 0.66 * r.standard_normal(N), 0.75 * c + 0.66 * r.standard_normal(N)]),
+                 1800, 6500), 6500, order=4) / 0.36
+    rate = ease([(beat(15), 30.0), (beat(17), 220.0), (beat(23), 220.0), (beat(24), 20.0), (DUR, 20.0)])
+    for ch in range(2):
+        hiss[ch] *= 0.5 + 0.5 * grain_env(rate, SEED + 61 + ch, rise=0.004, decay=0.012)
+    env = ease([(beat(15), 0.0), (beat(15) + 0.4, 0.25), (beat(17), 0.8), (beat(23), 0.8), (beat(24) + 0.3, 0.0)])
+    st.x = hiss * env * 0.03
     st.done()
 
 
 def v_trickle(mix):
-    send = ease([(10.0, 0.25), (25.0, 0.3), (beat(58), 0.55), (DUR, 0.55)])
+    send = ease([(beat(17), 0.25), (beat(31), 0.35), (beat(52), 0.5), (DUR, 0.5)])
     st = Stem(mix, "trickle", send=send)
     r = rng(4)
     c = r.standard_normal(N)
@@ -681,23 +718,21 @@ def v_trickle(mix):
     hi_b = bp(nz, 1100, 3400) / 0.3
     mid_b = bp(nz, 520, 1500) / 0.22
     low_b = bp(nz, 240, 760) / 0.15
-    # the tone: bright trickle, then lower and rounder into the pool (25.83), deeper as the pond rises
-    wh = ease([(10, 1.0), (beat(31), 1.0), (26.6, 0.35), (beat(35), 0.35), (35.417, 0.15), (beat(58), 0.1)])
-    wm = ease([(10, 0.35), (beat(31), 0.35), (26.6, 1.0), (beat(35), 1.0), (35.417, 0.6), (beat(58), 0.5)])
-    wl = ease([(10, 0.1), (beat(31), 0.1), (26.6, 0.45), (beat(35), 0.45), (35.417, 1.0), (beat(58), 0.8)])
+    # the hollow filling (bright), the stair running down to the cave (rounder), the wheel's water (deeper)
+    wh = ease([(beat(17), 1.0), (beat(22), 0.6), (beat(31), 0.9), (beat(35), 0.4), (beat(44), 0.3)])
+    wm = ease([(beat(17), 0.3), (beat(22), 0.4), (beat(31), 1.0), (beat(35), 1.0), (beat(44), 0.8)])
+    wl = ease([(beat(17), 0.1), (beat(31), 0.2), (beat(35), 0.8), (beat(44), 1.0), (beat(52), 0.8)])
     flick = np.stack([0.45 + 0.55 * wander(14.0, SEED + 41) ** 2, 0.45 + 0.55 * wander(14.0, SEED + 42) ** 2])
     body = (wh * hi_b + wm * mid_b + 1.2 * wl * low_b) * flick * 0.5
-    # bubbles: little rising sine blips, lower as the water deepens
-    rate = ease([(10.0, 0.0), (10.3, 18.0), (beat(31), 16.0), (26.6, 10.0), (35.4, 7.0), (beat(58), 5.0),
-                 (beat(64), 3.0), (55.4, 0.0)])
-    pitch = ease([(10, 1.0), (beat(31), 1.0), (26.6, 0.62), (beat(35), 0.6), (35.417, 0.45)])
-    pan = ease([(10.0, -0.5), (13.2, -0.3), (beat(16), -0.35), (15.5, -0.1), (23.5, 0.3), (29.0, 0.25),
-                (35.0, 0.2), (beat(58), 0.0)])
+    rate = ease([(beat(17), 0.0), (beat(18), 14.0), (beat(23), 6.0), (beat(31), 16.0), (beat(35), 9.0),
+                 (beat(44), 8.0), (beat(52), 4.0), (beat(58), 2.0), (beat(63), 0.0)])
+    pitch = ease([(beat(17), 1.0), (beat(31), 0.85), (beat(35), 0.6), (beat(44), 0.5)])
+    pan = ease([(beat(17), -0.3), (beat(26), -0.1), (beat(31), 0.0), (beat(35), -0.3), (beat(44), 0.15)])
     bub = np.zeros((2, N))
-    tb = 10.0
+    tb = beat(17)
     while True:
         tb += r.exponential(1.0 / 20.0)
-        if tb >= 55.4:
+        if tb >= beat(63):
             break
         i = int(tb * SR)
         if r.uniform() > rate[i] / 20.0 or not clear_of_accents(tb, 0.15, 0.08):
@@ -711,8 +746,9 @@ def v_trickle(mix):
         m = min(len(y), N - i)
         bub[0, i:i + m] += y[:m] * gl
         bub[1, i:i + m] += y[:m] * gr
-    level = ease([(10.0, 0.0), (10.7, 0.75), (beat(16), 0.85), (15.5, 1.0), (23.5, 0.95), (beat(35), 0.9),
-                  (35.417, 0.8), (beat(50), 0.65), (beat(58), 0.5), (beat(64), 0.4), (55.4, 0.0)])
+    level = ease([(beat(16), 0.0), (beat(17), 0.6), (beat(21), 0.9), (beat(24), 0.5), (beat(29), 0.5),
+                  (beat(31), 0.95), (beat(35), 0.85), (beat(39), 0.5), (beat(44), 0.85), (beat(52), 0.6),
+                  (beat(58), 0.35), (beat(63), 0.0)])
     gl, gr = pan_gains(pan)
     st.x = (body * np.stack([gl, gr]) + 0.35 * bub) * level * 0.1
     st.done()
@@ -723,15 +759,13 @@ def v_rustle(mix):
     r = rng(5)
     c = r.standard_normal(N)
     leaf = bp(np.stack([0.8 * c + 0.6 * r.standard_normal(N), 0.8 * c + 0.6 * r.standard_normal(N)]), 1800, 6000) / 0.4
-    rate = ease([(20.0, 25), (35.0, 60), (beat(50), 55), (45.0, 55), (45.4, 110), (46.3, 55), (46.8, 110),
-                 (47.8, 55), (beat(64), 30), (55.0, 20)])
+    rate = ease([(beat(25), 25), (beat(52), 55), (beat(56), 110), (beat(60), 55), (beat(63), 30), (DUR, 20)])
     shared = grain_env(rate, SEED + 50, rise=0.005, decay=0.035)
     for ch in range(2):
         m = (0.6 * shared + 0.4 * grain_env(rate, SEED + 51 + ch, rise=0.005, decay=0.035)) / (rate / rate.mean())
         leaf[ch] *= 0.3 + m
-    level = ease([(20.0, 0.0), (21.5, 0.4), (25.0, 0.55), (29.0, 0.6), (35.0, 0.7), (beat(50), 0.6),
-                  (45.1, 0.55), (45.8, 1.0), (46.6, 0.55), (46.8, 0.55), (47.5, 1.0), (48.2, 0.5),
-                  (beat(64), 0.28), (55.0, 0.0)])
+    level = ease([(beat(25), 0.0), (beat(27), 0.3), (beat(52), 0.45), (beat(55), 0.9), (beat(60), 0.6),
+                  (beat(63), 0.3), (57.0, 0.0)])
     st.x = leaf * level * 0.017
     st.done()
 
@@ -739,16 +773,16 @@ def v_rustle(mix):
 def v_brushes(mix):
     st = Stem(mix, "brushes", send=0.15)
     r = rng(7)
-    for b in range(24, 50):
-        if b % 4 in (1, 3) and beat(b) < beat(50):        # beats 2 and 4, stopping at 41.667
+    for b in range(52, 63):
+        if b % 2 == 1:                                      # the off-beats, while the days pass
             st.put(brush(0.8 + 0.2 * r.uniform(), 1200 + b), beat(b), pan=0.15, gain=0.07)
     st.done()
 
 
 def v_insects(mix):
     st = Stem(mix, "insect hum", send=0.25)
-    for f0, t0, t1, p0, p1, seed in ((205, 35.4, 41.0, -0.4, 0.2, 61), (232, 36.3, 42.4, 0.5, -0.1, 62),
-                                     (188, 38.0, 43.5, 0.0, 0.4, 63)):
+    for f0, t0, t1, p0, p1, seed in ((205, 37.0, 43.0, -0.4, 0.2, 61), (232, 43.6, 47.6, 0.5, -0.1, 62),
+                                     (188, 44.5, 48.4, 0.0, 0.4, 63)):
         r = np.random.default_rng(SEED + seed)
         n = int((t1 - t0) * SR)
         tt = np.arange(n) / SR
@@ -769,12 +803,12 @@ def v_crickets(mix):
     r = rng(8)
     pulse_n = int(0.014 * SR)
     hann = np.hanning(pulse_n)                       # 7 ms rise
-    specs = [(4400, -0.45, 0.74, 1.0, beat(50), 3), (4750, 0.40, 0.91, 0.75, 42.15, 3),
-             (4100, 0.10, 1.13, 0.6, 44.0, 4), (5000, -0.15, 0.83, 0.5, 48.6, 3), (4550, 0.6, 1.02, 0.45, 49.4, 2)]
-    level = ease([(beat(50), 1.0), (beat(64), 1.1), (55.0, 1.1), (56.4, 0.0)])
+    specs = [(4400, -0.45, 0.74, 1.0, beat(58), 3), (4750, 0.40, 0.91, 0.75, 49.15, 3),
+             (4100, 0.10, 1.13, 0.6, 50.6, 4), (5000, -0.15, 0.83, 0.5, 52.0, 3), (4550, 0.6, 1.02, 0.45, 53.4, 2)]
+    level = ease([(beat(58), 1.0), (beat(63), 1.1), (58.0, 0.9), (59.6, 0.0)])
     for f, pan, period, g, t, pulses in specs:
         first = True
-        while t < 56.4:
+        while t < 59.6:
             if first or clear_of_accents(t, 0.12, 0.05):
                 for k in range(pulses):
                     tp = t + k * 0.034
@@ -788,52 +822,30 @@ def v_crickets(mix):
 
 def v_birds(mix):
     st = Stem(mix, "birds", send=0.3)
-    st.put(bird_call([(3600, 2500), (3350, 2300), (3100, 2100)], 1301), beat(44.5), pan=0.3, gain=0.13)
-    st.put(bird_call([(3800, 2600), (3500, 2400), (3200, 2200)], 1302), beat(47.5), pan=0.25, gain=0.12)
+    st.put(bird_call([(3600, 2500), (3350, 2300), (3100, 2100)], 1301), beat(24.5), pan=0.3, gain=0.13)
+    st.put(bird_call([(3800, 2600), (3500, 2400), (3200, 2200)], 1302), beat(51.5), pan=0.25, gain=0.12)
     st.done()
     far = Stem(mix, "distant birds", send=0.7)
-    for t0, pan, seed, k in ((49.25, -0.5, 1303, 0.0), (51.35, 0.55, 1304, 0.08), (52.55, -0.2, 1305, 0.04)):
+    for t0, pan, seed, k in ((22.6, -0.5, 1303, 0.0), (44.6, 0.55, 1304, 0.08), (46.9, -0.2, 1305, 0.04)):
         far.put(lp(bird_call([(3300 - 200 * k, 2300), (3100, 2150), (2900, 2000)], seed), 3500), t0, pan=pan,
                 gain=0.06)
     far.done()
 
 
 def v_breath(mix):
-    """55.00: a soft breath of filtered noise as the picture dims to black (an 8 ms start, a 0.15 s swell)."""
+    """52.5: a soft breath of filtered noise under the bell as the camera pulls back."""
     st = Stem(mix, "breath", send=0.3)
     r = rng(9)
-    n = int(1.4 * SR)
+    n = int(2.0 * SR)
     tt = np.arange(n) / SR
-    y = lp(bp(r.standard_normal((2, n)), 700, 3000), 2600) / 0.3
-    env = 0.7 + 0.3 * np.sin(0.5 * np.pi * np.clip(tt / 0.15, 0, 1)) ** 2
-    env *= np.exp(-np.maximum(tt - 0.15, 0) / 0.33)
-    st.put(oneshot(y * env, att=0.008, tail=0.2), 55.0, gain=0.075)
+    y = lp(bp(r.standard_normal((2, n)), 500, 2400), 2000) / 0.3
+    env = smooth01(tt / 0.6) * np.exp(-np.maximum(tt - 0.6, 0) / 0.5)
+    st.put(oneshot(y * env, att=0.3, tail=0.3), beat(63) + 0.05, gain=0.05)
     st.done()
 
 
-def v_sand(mix):
-    """55.83 - 58.60: a soft sand-pour hiss, decaying, granular, thinning as the last grains settle."""
-    st = Stem(mix, "sand pour", send=0.25)
-    r = rng(10)
-    t0, t1 = beat(67), 58.95
-    c = r.standard_normal(N)
-    hiss = lp(bp(np.stack([0.75 * c + 0.66 * r.standard_normal(N), 0.75 * c + 0.66 * r.standard_normal(N)]),
-                 2400, 5800), 6000, order=4) / 0.36
-    rate = ease([(t0, 1400.0), (58.6, 220.0), (DUR, 220.0)]) * (T >= t0)
-    for ch in range(2):
-        hiss[ch] *= 0.6 + 0.4 * grain_env(rate + 1e-3, SEED + 61 + ch, rise=0.005, decay=0.008)
-    u = T - t0
-    env = (u >= 0) * np.exp(-np.maximum(u, 0) / 1.15) * smooth01((t1 - T) / 0.35)
-    na = int(0.008 * SR)
-    i0 = int(round(t0 * SR))
-    env[i0:i0 + na] *= rcos(na)
-    st.x = hiss * env * 0.027
-    capture(t0, st.x[:, i0:i0 + int(0.3 * SR)])
-    st.done()
-
-
-VOICES = [v_wind, v_hum, v_pad, v_epiano, v_plucks, v_bells, v_marimba, v_foley, v_knocks, v_glass, v_trickle,
-          v_rustle, v_brushes, v_insects, v_crickets, v_birds, v_breath, v_sand]
+VOICES = [v_wind, v_hum, v_pad, v_epiano, v_plucks, v_bells, v_marimba, v_foley, v_knocks, v_glass, v_rain,
+          v_trickle, v_rustle, v_brushes, v_insects, v_crickets, v_birds, v_breath]
 
 
 def make_ir(seed):
@@ -909,7 +921,7 @@ def measure(x, tc, t_prev, snip=None):
     first time from 20 ms before the cue that the envelope rises through bg + 20 % of (P - bg) and the
     following 10 ms average more than bg + 40 % of (P - bg). So a chord's beating dips after the attack
     can't push the onset late, and a flicker in the bed before the cue can't pull it early."""
-    a, b = int((tc - 1.0) * SR), min(len(x), int((tc + 0.7) * SR))
+    a, b = max(0, int((tc - 1.0) * SR)), min(len(x), int((tc + 0.7) * SR))
     c = int(tc * SR) - a
     pre = 0.25 if t_prev is None else min(0.25, max(0.05, tc - t_prev - 0.02))
     pw = slice(c - int(pre * SR), c - int(0.008 * SR))
@@ -1010,7 +1022,8 @@ def plots(x, rows):
     fig, axs = plt.subplots(nrow, cols, figsize=(20, 2.3 * nrow))
     for axc, (label, tc, on, pk, snr, band) in zip(axs.flat, rows):
         a, b = int((tc - 0.15) * SR), int((tc + 0.15) * SR)
-        e = envelope(mono, a - SR, b + SR, *band)[SR:SR + (b - a)]
+        padded = np.pad(mono, (SR, SR))                 # a cue near the start or end still has a second each side
+        e = envelope(padded, a, b + 2 * SR, *band)[SR:SR + (b - a)]
         axc.plot((np.arange(a, b) / SR - tc) * 1000, 20 * np.log10(e + 1e-9), lw=0.7)
         axc.axvline(0, color="r", lw=0.6)
         axc.axvline((on - tc) * 1000, color="g", lw=0.6, ls="--")
