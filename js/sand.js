@@ -565,6 +565,8 @@
     /* A slow stream from the water under the beds down to the cave, a stair of small still pools,
        each holding behind a lip of stone, so that it runs only when the ground gives it water. */
     const pool = { L: 0, R: -1, top: 0 };
+    /* Where things are, in grains, for the machine and for the film: filled in as the parts are placed. */
+    const geo = { aqTop, aq: { x: aq.X, rx: aq.RX }, stair: null, well: null, bed: null };
     (function () {
       let sx = -1;
       for (let x = 0; x < GW && sx < 0; x++) if (zone[idx(x, aqTop + P(1))] === Z_AQ) sx = x;
@@ -594,6 +596,8 @@
         /* The lip. */
         for (let y = b - full; y < b; y++) { const i = put(xb, y, ROCK, pk(SH.stone[y === b - full ? 3 : 2], 0.9)); zone[i] = 0; gk[i] = 12; }
         prevTop = b - deep;
+        if (!geo.stair) geo.stair = { sx, steps: [] };
+        geo.stair.steps.push({ xa, xb, b, top: b - deep, water: b - full });
       }
       const xs = Math.round(sx - n * span);
       for (let x = xs; x >= ex - 1; x--) carve(x, bEnd, x === xs ? Math.min(prevTop, bEnd - deep) : bEnd - deep, false);
@@ -1049,6 +1053,7 @@
         put(ropeX, end, WOOD, K.wood[1]);
         for (let y = SB; y < shaftBottom; y++) for (let x = F(well - 2); x < F(well + 3); x++) if (mat[idx(x, y)] === MASON) mossGroup[idx(x, y)] = 1;
       }
+      geo.well = { ropeX, s0: F(well - 1), s1: F(well + 2), bottom: shaftBottom, ringL: X(252), ringR: X(261) - 1, ringTop: Y(104), roller: F(98.5 + oy), fence: [X(262), X(267) - 1, Y(103)] };
     }
 
     yield;
@@ -1074,6 +1079,7 @@
           }
         }
         if (k === 0) {
+          geo.bed = { x0: X(267), x1: X(286) - 1, top: F(top) };
           /* Cabbages, leaf over leaf. */
           [269, 274].forEach((cx) => {
             B(cx - 2, cx + 2, 105, 107, (x, y, u, v) => {
@@ -2298,6 +2304,7 @@
         const tx = f.x - f.dir * (FL - 1), ty = f.y + (hash(f.x, f.y, T >> 3) < 0.5 ? -1 : 1);
         if (at(tx, ty) === WATER) out[ty * GW + tx] = K.blossom[0];
       }
+      drawMachine();
       if (hover) {
         /* Phased from the scene's start, so the frozen frame is the rest pose. 40 ticks a second: a 3 s bob (rest,
            lift, a short settle), and a blink every 6 s, always at rest. */
@@ -2358,13 +2365,105 @@
       }
     }
 
+    /* The machine the creature built: a wooden wheel where the water under the beds spills down the stair, a rope belt
+       from its hub to a drum at the foot of the well, a loop of clay pots up the shaft, and (where there are beds) a
+       trough from the well head over the fence to the cabbages. It is drawn over the grains and throws no dice. It turns
+       only while water moves over the stair's first lip, so the water that turns it is moved, never made. Its angle starts
+       at zero when the scene begins, so the frozen frame always shows it at rest. */
+    const mach = (function () {
+      const st = geo.stair, wl = geo.well;
+      if (!st || st.steps.length < 2 || !wl || wl.bottom < 0) return null;
+      const s0 = st.steps[0], s1 = st.steps[1];
+      const R = Math.max(3, Math.round(2 * U));
+      const hub = [s0.xb - R - 1, Math.min(s1.water - 1, s1.top + R + 1)];
+      const px = Math.max(wl.s0, Math.min(wl.ropeX - 2, wl.s1 - 3));
+      const drum = [px + 1, wl.bottom - 2];
+      const gap = Math.max(6, Math.round(9 * U / 1.5));
+      const top = wl.ringTop - 2;
+      const m = { R, hub, drum, px, gap, top, bottom: wl.bottom - 4, lip: s0.xb, y0: s0.water, y1: s1.b, run: 0, a: 0, trough: null };
+      const bd = geo.bed;
+      if (bd) {
+        const x0 = wl.ringR - 3, x1 = bd.x0, y0 = wl.fence[2] - 2;
+        m.trough = { x0, x1, y0, y: (x) => y0 + Math.floor((x - x0) * 2 / Math.max(1, x1 - x0)), bed: bd.top };
+      }
+      return m;
+    })();
+    if (mach) geo.machine = { hub: mach.hub, R: mach.R, drum: mach.drum, shaft: mach.px, trough: mach.trough && [mach.trough.x0, mach.trough.x1, mach.trough.y0] };
+    function machineTick() {
+      if (!mach) return;
+      let flow = 0;
+      for (let y = mach.y0 - 1; y <= mach.y1; y++) for (let x = mach.lip - 2; x <= mach.lip + 1; x++) {
+        if (!inb(x, y)) continue;
+        const i = idx(x, y);
+        if (mat[i] === WATER && stamp[i] === stampNow) flow++;
+      }
+      mach.run += ((flow > 0 ? 1 : 0) - mach.run) * (flow > 0 ? 0.06 : 0.015);
+      mach.a += mach.run * 0.045;
+    }
+    const C_POT = [K.worm[0], K.worm[2], K.worm[3]];
+    const C_ROPE = pk(rgb('#B49A78'));
+    function drawMachine() {
+      if (!mach) return;
+      const solid = (x, y) => { const m = at(x, y); return m !== AIR && m !== WATER && m !== EDGE; };
+      const dot = (x, y, c) => { if (x >= 0 && y >= 0 && x < GW && y < GH) out[y * GW + x] = c; };
+      const nook = (x, y) => { if (inb(x, y) && solid(x, y)) dot(x, y, caveC[0]); };
+      const [hx, hy] = mach.hub, R = mach.R, a = mach.a;
+      /* The niche it turns in, cut where the rock was. */
+      for (let y = -R - 2; y <= R + 2; y++) for (let x = -R - 2; x <= R + 2; x++) if (x * x + y * y <= (R + 1.6) * (R + 1.6)) nook(hx + x, hy + y);
+      /* The belt: a rope from the hub to the drum, in a slot where it passes through rock. */
+      (function () {
+        let [x0, y0] = mach.hub; const [x1, y1] = mach.drum;
+        const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+        let e = dx + dy, n = 0;
+        for (;;) {
+          if (solid(x0, y0)) { nook(x0, y0 - 1); nook(x0, y0 + 1); }
+          dot(x0, y0, ((n++ + Math.floor(a * R)) % 6) < 1 ? K.wood[2] : C_ROPE);
+          if (x0 === x1 && y0 === y1) break;
+          const e2 = 2 * e;
+          if (e2 >= dy) { e += dy; x0 += sx; }
+          if (e2 <= dx) { e += dx; y0 += sy; }
+        }
+      })();
+      /* The wheel: rim, six spokes and paddles, turning with the angle. */
+      for (let k = 0; k < 6; k++) {
+        const t = a + k * Math.PI / 3, c = Math.cos(t), s = Math.sin(t);
+        for (let r = 1; r < R; r++) dot(Math.round(hx + c * r), Math.round(hy + s * r), K.wood[2]);
+        dot(Math.round(hx + c * (R + 1)), Math.round(hy + s * (R + 1)), K.wood[2]);
+      }
+      for (let k = 0; k < 8 * R; k++) { const t = k * Math.PI * 2 / (8 * R); dot(Math.round(hx + Math.cos(t) * R), Math.round(hy + Math.sin(t) * R), K.wood[3]); }
+      dot(hx, hy, K.wood[3]);
+      /* The drum at the foot of the shaft. */
+      const [dx, dy] = mach.drum;
+      for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) dot(dx + x, dy + y, (x || y) ? K.wood[1] : K.wood[3]);
+      /* The pot loop: a rope up the shaft and a clay pot every few grains, rising as the wheel turns. */
+      const px = mach.px, g = mach.gap, off = Math.floor(a * R * 0.7) % g;
+      for (let y = mach.top; y <= dy - 2; y++) if (at(px, y) === AIR || at(px, y) === WATER) dot(px, y, C_ROPE);
+      for (let y = mach.bottom - off; y >= mach.top; y -= g) {
+        dot(px, y, C_POT[1]); dot(px + 1, y, C_POT[1]); dot(px, y + 1, C_POT[0]); dot(px + 1, y + 1, C_POT[0]); dot(px, y - 1, C_POT[2]);
+      }
+      /* The trough, over the fence to the bed, with water running in it while the wheel turns. */
+      const tr = mach.trough;
+      if (tr) {
+        for (let x = tr.x0; x <= tr.x1; x++) {
+          const y = tr.y(x);
+          /* A split log: its lit rim, its shadowed belly, and water in it while the wheel turns. */
+          dot(x, y + 1, K.wood[0]);
+          dot(x, y, K.wood[2]);
+          if (x === tr.x0 || x === tr.x1) dot(x, y - 1, K.wood[3]);
+          else if (mach.run > 0.3) dot(x, y, K.water[2]);
+        }
+        if (mach.run > 0.3) for (let y = tr.y(tr.x1) + 1; y < tr.bed; y++) if (((y + Math.floor(a * 6)) & 3) === 0) dot(tr.x1, y, K.water[2]);
+      }
+    }
+
     const world = {
-      GW, GH, U, PW: GWp, PH: GHp, line: 'T+0000000', render, out, image,
-      update() { update(); drift(); },
+      GW, GH, U, PW: GWp, PH: GHp, line: 'T+0000000', render, out, image, geo, mat, stamp,
+      update() { update(); drift(); machineTick(); },
       get T() { return T - T0; },
       get tick() { return tick; },
       get moved() { return moved; },
       get living() { return living; },
+      get machine() { return mach ? { run: mach.run, angle: mach.a } : null; },
       next() { return queue.length ? [queue.shift(), queue.shift()] : null; },
       /* The opening is settled with the opening's dice. From here on each visit throws its own. */
       begin(given) {
@@ -2384,6 +2483,7 @@
         if (hover) for (let k = 0; k < stand.length; k++) { const i = stand[k]; if (i >= 0 && (mat[i] === CREATURE || mat[i] === GREEN)) toAir(i); }
         stand.length = 0;
         eyes.length = 0;
+        if (mach) { mach.a = 0; mach.run = 0; }
         census();
       },
       /* The books: every grain of water, seen or not, and the counts. Nothing is made or lost. */
