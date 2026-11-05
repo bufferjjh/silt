@@ -412,6 +412,7 @@
     function reset(s) {
       seed = s || 1;
       n = 0;
+      drawn1 = -1; drawnP = -1;
       Object.keys(S).forEach((k) => { S[k] = typeof S[k] === 'boolean' ? false : 0; });
       if (!alive) return;
       finish(makeW1(W1.GW, W1.GH));
@@ -560,6 +561,7 @@
     /* ---- Painting ---- */
 
     let A = new Uint32Array(0), B = new Uint32Array(0);
+    let drawn1 = -1, drawnP = -1;
     function paint(rgba, cols, rows, cam) {
       const out = new Uint32Array(rgba.buffer, rgba.byteOffset, cols * rows);
       const t = cam.t !== undefined ? cam.t : n / 60;
@@ -599,8 +601,9 @@
         return;
       }
       const lapse = t >= T_LAPSE && W1P && dates;
-      if (!S.frozen || !lapse) W1.render();
-      if (lapse) { W1P.render(); }
+      /* Each world is drawn once a tick, however many pictures use it. */
+      if ((!S.frozen || !lapse) && drawn1 !== n) { W1.render(); drawn1 = n; }
+      if (lapse && drawnP !== n) { W1P.render(); drawnP = n; }
       const day = lapse ? dayAt(t, reel.reduced) : 0;
       const w1 = W1.out, wp = lapse ? W1P.out : null;
       const src = (g) => (wp && dates[gIdx(g)] <= day ? wp[g] : w1[g]);
