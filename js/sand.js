@@ -11,18 +11,20 @@
 (function () {
   'use strict';
 
-  const canvas = document.getElementById('sand');
-  const stage = document.getElementById('sand-stage'), still = document.getElementById('sand-still');
-  const ctl = document.getElementById('sand-ctl'), runBtn = document.getElementById('sand-run');
-  const logEl = document.getElementById('sand-log'), movedEl = document.getElementById('sand-moved');
-  const livingEl = document.getElementById('sand-living');
-  const hinge = document.getElementById('hinge-state'), tag = document.getElementById('sand-tag');
+  const DOC = typeof document !== 'undefined' ? document : null;
+  const el = (id) => (DOC ? DOC.getElementById(id) : null);
+  const canvas = el('sand');
+  const stage = el('sand-stage'), still = el('sand-still');
+  const ctl = el('sand-ctl'), runBtn = el('sand-run');
+  const logEl = el('sand-log'), movedEl = el('sand-moved');
+  const livingEl = el('sand-living');
+  const hinge = el('hinge-state'), tag = el('sand-tag');
   let ctx = null;
   try { ctx = canvas.getContext('2d', { alpha: false }); } catch (e) { /* No canvas. The frozen frame stays. */ }
-  if (!ctx || !stage || !still || !ctl || !runBtn || !logEl || !movedEl || !livingEl || !hinge || !tag) return;
+  const PAGE = !!(ctx && stage && still && ctl && runBtn && logEl && movedEl && livingEl && hinge && tag);
 
   /* Earlier versions kept their world in this browser. This one starts fresh on every visit, so that store goes. */
-  try { if (window.indexedDB) indexedDB.deleteDatabase('silt'); } catch (e) { /* Nothing kept, nothing to clear. */ }
+  if (PAGE) try { if (window.indexedDB) indexedDB.deleteDatabase('silt'); } catch (e) { /* Nothing kept, nothing to clear. */ }
 
   const OPENING = 0x51f7a3c9; /* The dice the opening is composed and settled with. */
   const GRAIN = 1.5; /* CSS px, before snapping to device pixels. */
@@ -78,6 +80,13 @@
     worm: ['#8E5E50', '#A87060', '#C48A72', '#D9A288']
   };
 
+  /* Coracle, the creature, drawn over the grains (it throws no dice). One size in the world: the 9 set below 1.8 grains
+     a plan step, the 12 set from 1.8 up. Each set is one grid; its frames share the origin. '.' is transparent. */
+  const CORACLE_SETS = {
+    9: {"rest":[".........","lllllllls","lppppppps","lpgpppgps","ppkpppkps",".pppppps.","..sssss..",".....s...",".....hh..",".....hg.."],"lift":["lllllllls","lppppppps","lpgpppgps","ppkpppkps",".pppppps.","..sssss..",".....s...",".....s...",".....hh..",".....hg.."],"settle":[".........",".........","lllllllls","lppppppps","lpgpppgps","ppkpppkps",".sssssss.",".....s...",".....hh..",".....hg.."],"blink":[".........","lllllllls","lppppppps","lppppppps","ppkpppkps",".pppppps.","..sssss..",".....s...",".....hg..",".....hg.."],"base":9},
+    12: {"rest":["............","llllllllllls","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hh...",".......hg...","............"],"lift":["llllllllllls","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......s....",".......hh...",".......hg...","............"],"settle":["............","............","llllllllllls","olppppppppso","olpgkppgkpso","oppkkppkkpso",".opppppppso.","..osssssso..",".......s....",".......hh...",".......hg...","............"],"blink":["............","llllllllllls","olppppppppso","olppppppppso","oppkkppkkpso",".opppppppso.","..osssssso..","...osssso...",".......s....",".......hg...",".......hg...","............"],"base":10},
+  };
+  const CORACLE_C = {g: pk(rgb('#FFE09A')), h: pk(rgb('#D2AC60')), k: pk(rgb('#281C17')), l: pk(rgb('#F7E6C4')), o: pk(rgb('#6A4934')), p: pk(rgb('#DAC29C')), s: pk(rgb('#B49A78'))};
   const BAYER = new Uint8Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]);
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -182,9 +191,10 @@
      the plate never shows.
      It is built a part at a time (each yield is a pause), so the page stays free to scroll while it is made. */
 
-  function* boot(GW, GH, U, PW, PH) {
+  function* boot(GW, GH, U, PW, PH, opts) {
     const W = GW + 2, H = GH + 2, N = W * H;
-    const image = ctx.createImageData(GW, GH);
+    const bare = !ctx || !!(opts && opts.bare);
+    const image = bare ? { width: GW, height: GH, data: new Uint8ClampedArray(GW * GH * 4) } : ctx.createImageData(GW, GH);
     const out = new Uint32Array(image.data.buffer);
 
     /* mat is also read four grains at a time (mat4), so its buffer is a whole number of fours. */
@@ -795,6 +805,9 @@
 
     const lights = []; /* [x, y, radius, strength, kind]: 0 steady, 1 twinkles, 2 the window */
     const chimney = [], eyes = [];
+    /* Today's creature and sprout, held while the opening settles; where Coracle hovers (null: not in this frame). */
+    const stand = [];
+    let hover = null;
     const fish = [], flies = [], plants = [], fungi = [], worms = [];
     const mossGroup = new Uint8Array(N); /* Which named place a mossy surface belongs to. */
 
@@ -1085,14 +1098,22 @@
             }
             if (b >= 4.9 && (Math.abs(a - 1.5) < 0.5 || Math.abs(a - 5.5) < 0.5)) c = 0;
             if (c < 0) return;
-            put(x, y, CREATURE, K.creature[c]);
+            stand.push(put(x, y, CREATURE, K.creature[c]));
           });
           const ex = F(281.6 + ox), ey = F(104.5 + oy);
           eyes.push(put(ex, ey, CREATURE, K.creature[0]));
           if (U >= 2) eyes.push(put(ex, ey + 1, CREATURE, K.creature[0]));
-          for (let y = F(104.3 + oy); y < Y(106); y++) put(F(278.5 + ox), y, GREEN, K.crop[2]);
-          for (let x = F(277.2 + ox); x < F(278.5 + ox); x++) put(x, F(104.5 + oy), GREEN, K.crop[3]);
-          put(F(278.5 + ox) + 1, F(104.1 + oy), GREEN, K.crop[3]);
+          for (let y = F(104.3 + oy); y < Y(106); y++) stand.push(put(F(278.5 + ox), y, GREEN, K.crop[2]));
+          for (let x = F(277.2 + ox); x < F(278.5 + ox); x++) stand.push(put(x, F(104.5 + oy), GREEN, K.crop[3]));
+          stand.push(put(F(278.5 + ox) + 1, F(104.1 + oy), GREEN, K.crop[3]));
+          eyes.forEach((i) => { stand.push(i); });
+          /* Coracle: centred on today's creature, its lowest row round(2U/1.5) grains of air above the bed. */
+          {
+            const set = CORACLE_SETS[U < 1.8 ? 9 : 12];
+            let lo = 1e9, hi = -1;
+            stand.forEach((i) => { if (i >= 0 && mat[i] === CREATURE) { const x = (i % W) - 1; if (x < lo) lo = x; if (x > hi) hi = x; } });
+            if (hi >= 0) hover = { set, x: Math.floor((lo + hi) / 2) - (set.rest[0].length >> 1), y: F(top) - 1 - Math.round(2 * U / 1.5) - set.base };
+          }
         } else if (k === 1) {
           /* Carrots: an orange shoulder in the soil and a fan of fine leaves. */
           for (let cx = 291; cx < 305; cx += 4) {
@@ -2277,6 +2298,21 @@
         const tx = f.x - f.dir * (FL - 1), ty = f.y + (hash(f.x, f.y, T >> 3) < 0.5 ? -1 : 1);
         if (at(tx, ty) === WATER) out[ty * GW + tx] = K.blossom[0];
       }
+      if (hover) {
+        /* Phased from the scene's start, so the frozen frame is the rest pose. 40 ticks a second: a 3 s bob (rest,
+           lift, a short settle), and a blink every 6 s, always at rest. */
+        const ph = T - T0, b = ((ph % 120) + 120) % 120, w = ((ph % 240) + 240) % 240;
+        const set = hover.set;
+        const fr = b >= 40 && b < 100 ? set.lift : b >= 100 && b < 108 ? set.settle : w >= 228 && w < 234 ? set.blink : set.rest;
+        for (let r = 0; r < fr.length; r++) {
+          const row = fr[r], gy = hover.y + r;
+          if (gy < 0 || gy >= GH) continue;
+          for (let q = 0; q < row.length; q++) {
+            const ch = row[q], gx = hover.x + q;
+            if (ch !== '.' && gx >= 0 && gx < GW) out[gy * GW + gx] = CORACLE_C[ch];
+          }
+        }
+      }
       if (eyes.length && (T % 230) < 5) {
         for (let k = 0; k < eyes.length; k++) { const e = eyes[k]; if (e >= 0 && mat[e] === CREATURE) out[(((e / W) | 0) - 1) * GW + (e % W) - 1] = K.creature[2]; }
       }
@@ -2311,7 +2347,7 @@
           out[o2] = blend(out[o2], SH.glow[0][0], SH.glow[0][1], SH.glow[0][2], 0.3);
         }
       }
-      ctx.putImageData(image, 0, 0);
+      if (!bare) ctx.putImageData(image, 0, 0);
     }
 
     function drift() {
@@ -2323,7 +2359,7 @@
     }
 
     const world = {
-      GW, GH, U, PW: GWp, PH: GHp, line: 'T+0000000', render,
+      GW, GH, U, PW: GWp, PH: GHp, line: 'T+0000000', render, out, image,
       update() { update(); drift(); },
       get T() { return T - T0; },
       get tick() { return tick; },
@@ -2331,11 +2367,11 @@
       get living() { return living; },
       next() { return queue.length ? [queue.shift(), queue.shift()] : null; },
       /* The opening is settled with the opening's dice. From here on each visit throws its own. */
-      begin() {
+      begin(given) {
         moved = 0;
         T0 = T;
         let s = 0;
-        try {
+        if (given !== undefined) s = given >>> 0; else try {
           const a = new Uint32Array(1);
           (window.crypto || window.msCrypto).getRandomValues(a);
           s = a[0];
@@ -2345,6 +2381,9 @@
         firstDrip = T + 90 + rint(90);
         lastWellDrip = -1e9;
         recording = true;
+        if (hover) for (let k = 0; k < stand.length; k++) { const i = stand[k]; if (i >= 0 && (mat[i] === CREATURE || mat[i] === GREEN)) toAir(i); }
+        stand.length = 0;
+        eyes.length = 0;
         census();
       },
       /* The books: every grain of water, seen or not, and the counts. Nothing is made or lost. */
@@ -2360,6 +2399,11 @@
     census();
     return world;
   }
+
+  const API = { boot, layout, OPENING, PLAN, GRAIN };
+  if (typeof module === 'object' && module.exports) module.exports = API;
+  if (typeof window !== 'undefined') window.SiltSand = API;
+  if (!PAGE) return;
 
   /* ---- Page ---- */
 
