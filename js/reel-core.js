@@ -239,7 +239,9 @@
       p.ctl.creature = false; p.ctl.stars = false; p.ctl.lights = 0; p.ctl.flies = false;
       W1P = p;
       yield;
-      const f = yield* build(U_F, {}, Math.max(576, (size && size[0] > 577) ? size[0] : 576), Math.max(324, size ? size[1] : 0));
+      /* As wide as the widest picture seen in play: 576 (Exhibit B's own) unless the picture is wider than 577. */
+      const wide = Math.max(seen.cols, size ? size[0] : 0), tall = Math.max(seen.rows, size ? size[1] : 0);
+      const f = yield* build(U_F, {}, wide > 577 ? wide : 576, Math.max(324, tall));
       for (let k = 0; k < SETTLE; k += 10) { f.settle(10); yield; }
       f.begin(PLATE_BEGIN);
       f.render();
@@ -492,8 +494,10 @@
     /* ---- Words ---- */
 
     let v = null;
+    const seen = { cols: 0, rows: 0 };
     function frame(t, cols, rows) {
       cols = cols || VW; rows = rows || VH;
+      if (alive) { seen.cols = Math.max(seen.cols, cols); seen.rows = Math.max(seen.rows, rows); }
       v = {
         t, scene: t < T_ONE ? 'open' : t < T_PULL ? 'place' : 'end', mode: 'world',
         title: { left: 'silt', leftColor: '#c8bcae', right: 'concept render · time sped up', rightColor: AMBER },
